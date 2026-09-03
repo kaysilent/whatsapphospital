@@ -1531,6 +1531,12 @@
       "ai": "AI Assistant",
       "knowledge": "Knowledge Base"
     },
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "agent": "Agent",
+      "viewer": "Viewer"
+    },
     "groups": {
       "account": "Account",
       "workspace": "Workspace"

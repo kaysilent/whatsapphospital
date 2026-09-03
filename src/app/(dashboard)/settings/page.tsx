@@ -70,19 +70,35 @@ function SettingsPageInner() {
     [mode, defaultCurrency],
   );
 
-  const panel: Record<SettingsSection, ReactNode> = {
-    overview: <SettingsOverview onSelect={go} />,
-    profile: <ProfileForm />,
-    security: <SecurityPanel />,
-    appearance: <AppearancePanel />,
-    whatsapp: <WhatsAppConfig />,
-    templates: <TemplateManager />,
-    'quick-replies': <QuickRepliesManager />,
-    fields: <FieldsAndTagsPanel />,
-    members: <MembersTab />,
-    api: <ApiKeysSettings />,
-    ai: <AiAgentPanel />,
-    knowledge: <KnowledgeBasePanel />,
+  const renderPanel = (sec: SettingsSection) => {
+    switch (sec) {
+      case 'overview':
+        return <SettingsOverview onSelect={go} />;
+      case 'profile':
+        return <ProfileForm />;
+      case 'security':
+        return <SecurityPanel />;
+      case 'appearance':
+        return <AppearancePanel />;
+      case 'whatsapp':
+        return <WhatsAppConfig />;
+      case 'templates':
+        return <TemplateManager />;
+      case 'quick-replies':
+        return <QuickRepliesManager />;
+      case 'fields':
+        return <FieldsAndTagsPanel />;
+      case 'members':
+        return <MembersTab />;
+      case 'api':
+        return <ApiKeysSettings />;
+      case 'ai':
+        return <AiAgentPanel />;
+      case 'knowledge':
+        return <KnowledgeBasePanel />;
+      default:
+        return <SettingsOverview onSelect={go} />;
+    }
   };
 
   return (
@@ -98,7 +114,7 @@ function SettingsPageInner() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[236px_minmax(0,1fr)] lg:items-start">
         <SettingsRail active={section} onSelect={go} hints={hints} />
-        <div className="min-w-0">{panel[section]}</div>
+        <div className="min-w-0">{renderPanel(section)}</div>
       </div>
     </div>
   );
