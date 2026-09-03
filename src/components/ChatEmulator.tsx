@@ -206,105 +206,79 @@ export default function ChatEmulator({
 
     // 8. Determine Next Step in Conversation
     const name = newCtx.patient_name;
-    const dept = newCtx.department || (lower.includes('book') ? 'General Medicine' : undefined);
-    const date = newCtx.date || '2026-09-04';
-    const time = newCtx.time || '10:30 AM';
-    const phone = newCtx.phone_number || '+91 98765 43210';
+    const dept = newCtx.department;
+    const date = newCtx.date;
+    const time = newCtx.time;
+    const phone = newCtx.phone_number;
 
-    // If we have both Name and Department and user specified date/time or asked to book:
-    if (name && (newCtx.department || lower.includes('book') || newCtx.time || newCtx.date)) {
-      const confirmedDept = newCtx.department || 'Cardiology';
-      const doctorName = confirmedDept === 'Pediatrics' ? 'Dr. Shalini Roy' : confirmedDept === 'Orthopedics' ? 'Dr. Vivek Menon' : 'Dr. Rajesh Gupta';
-      
-      const apptData = {
-        patient_name: name,
-        phone_number: phone,
-        date: date,
-        time: time,
-        department: confirmedDept
-      };
-
-      if (onBookAppointment) {
-        onBookAppointment(apptData);
-      }
-
-      if (onExtractEntity) {
-        onExtractEntity({
-          intent: "book_appointment",
-          entities: apptData,
-          triage_level: "NORMAL",
-          confidence: 0.99
-        });
-      }
-
+    // Step-by-step guidance if details are missing
+    if (!name) {
       return {
-        content: `✅ **Appointment Successfully Booked!**\n\nThank you, **${name}**. Your consultation is confirmed with **${doctorName}** (${confirmedDept}).\n\n📅 **Date:** ${date}\n🕒 **Time Slot:** ${time}\n📍 **Location:** OPD Block A, Room 204\n\nA WhatsApp reminder and digital pass have been linked to **${phone}**.`,
-        isAppointmentCard: true,
-        appointmentData: apptData
-      };
-    }
-
-    // If user provided name only (e.g. "arbaz" or "Arbaz Khan"):
-    if (name && !newCtx.department) {
-      if (onExtractEntity) {
-        onExtractEntity({
-          intent: "patient_greeting",
-          entities: { patient_name: name },
-          triage_level: "NORMAL",
-          confidence: 0.95
-        });
-      }
-      return {
-        content: `Nice to meet you, **${name}**! 👋\n\nWhich department or specialist would you like to consult with?\n\n• **Cardiology** (Heart / Chest)\n• **Pediatrics** (Child Care)\n• **Orthopedics** (Bones & Joints)\n• **General Medicine** (Fever / General Checkup)\n• **Neurology & ENT**\n\nOr simply tell me your symptoms and I will recommend the right doctor for you!`,
+        content: `👋 Hello! Welcome to Aivry Hospital WhatsApp Reception.\n\nTo begin your booking, please reply with your **Full Name**:`,
         isAppointmentCard: false
       };
     }
 
-    // If user provided department only (e.g. "Cardiology" or "I want to see heart doctor"):
-    if (newCtx.department && !name) {
-      const doc = newCtx.department === 'Pediatrics' ? 'Dr. Shalini Roy' : 'Dr. Rajesh Gupta';
-      if (onExtractEntity) {
-        onExtractEntity({
-          intent: "department_selected",
-          entities: { department: newCtx.department },
-          triage_level: "NORMAL",
-          confidence: 0.95
-        });
-      }
+    if (!dept) {
       return {
-        content: `Certainly! Our senior specialist for **${newCtx.department}** is **${doc}**.\n\nMay I please have the **Patient's Full Name** and your preferred date/time to schedule the visit?`,
+        content: `Thank you, **${name}**.\n\nWhich department or specialist would you like to consult with?\n• Cardiology\n• Pediatrics\n• Orthopedics\n• General Medicine\n• Neurology`,
         isAppointmentCard: false
       };
     }
 
-    // If user said greeting ("hi", "hello", "hey"):
-    if (lower === 'hi' || lower === 'hello' || lower === 'hey' || lower.startsWith('hi ') || lower.startsWith('hello ')) {
-      if (onExtractEntity) {
-        onExtractEntity({
-          intent: "greeting",
-          entities: {},
-          triage_level: "NORMAL",
-          confidence: 0.98
-        });
-      }
+    if (!phone) {
       return {
-        content: `Hello! 👋 How can I help you today at **Aivry Hospital**?\n\n• To book a visit: send your **Name & Specialty**\n• To check timings: type **OPD hours**\n• For emergencies: type **Emergency casualty**`,
+        content: `Got it, **${name}** (${dept}).\n\nWhat is your WhatsApp phone number? (e.g. +91 98765 43210)`,
         isAppointmentCard: false
       };
     }
 
-    // General intelligent contextual response:
+    if (!date) {
+      return {
+        content: `Thank you. What date would you like your appointment? (e.g., Tomorrow, Today, or YYYY-MM-DD)`,
+        isAppointmentCard: false
+      };
+    }
+
+    if (!time) {
+      return {
+        content: `Almost done! What time slot would you prefer? (e.g., 10:30 AM, 03:00 PM)`,
+        isAppointmentCard: false
+      };
+    }
+
+    // All details collected! Book the appointment.
+    const confirmedDept = dept;
+    const doctorName = confirmedDept === 'Pediatrics' ? 'Dr. Shalini Roy' : confirmedDept === 'Orthopedics' ? 'Dr. Vivek Menon' : 'Dr. Rajesh Gupta';
+    
+    const apptData = {
+      patient_name: name,
+      phone_number: phone,
+      date: date,
+      time: time,
+      department: confirmedDept
+    };
+
+    if (onBookAppointment) {
+      onBookAppointment(apptData);
+    }
+
     if (onExtractEntity) {
       onExtractEntity({
-        intent: "general_inquiry",
-        entities: { query: raw },
+        intent: "book_appointment",
+        entities: apptData,
         triage_level: "NORMAL",
-        confidence: 0.92
+        confidence: 0.99
       });
     }
+
+    // Reset context for next booking
+    setContext({});
+
     return {
-      content: `I'd be happy to assist you with that! To schedule an appointment with our doctors, could you please share your **Name**, your **preferred department** (e.g. Cardiology, Pediatrics, General Medicine), and what time works best for you?`,
-      isAppointmentCard: false
+      content: `Appointment Successfully Booked!\n\nThank you, **${name}**. Your consultation is confirmed with **${doctorName}** (${confirmedDept}).\n\n📅 **Date:** ${date}\n🕒 **Time Slot:** ${time}\n📍 **Location:** OPD Block A, Room 204\n\nA WhatsApp reminder and digital pass have been linked to **${phone}**.`,
+      isAppointmentCard: true,
+      appointmentData: apptData
     };
   };
 
