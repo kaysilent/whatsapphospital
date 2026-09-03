@@ -20,39 +20,24 @@ import {
   CheckCircle2, 
   AlertCircle,
   Stethoscope,
-  Send
+  Send,
+  Bot,
+  Sparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import Link from 'next/link';
 
 export default function AppointmentsPage() {
   const { appointments } = useDemoState();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
 
-  // Seed default clinical appointments if empty
-  const defaultAppointments = [
-    { id: "demo-1", patient_name: "Rahul Sharma", phone_number: "+91 98765 43210", date: "2026-09-03", time: "10:30", department: "Cardiology", doctor: "Dr. Rajesh Gupta", status: "Confirmed" },
-    { id: "demo-2", patient_name: "Priya Patel", phone_number: "+91 98123 45678", date: "2026-09-03", time: "11:15", department: "Pediatrics", doctor: "Dr. Shalini Roy", status: "In-Progress" },
-    { id: "demo-3", patient_name: "Amit Kumar Verma", phone_number: "+91 97234 56789", date: "2026-09-04", time: "14:00", department: "General Medicine", doctor: "Dr. Ananya Rao", status: "Scheduled" },
-    { id: "demo-4", patient_name: "Sunita Reddy", phone_number: "+91 99345 67890", date: "2026-09-04", time: "15:30", department: "Orthopedics", doctor: "Dr. Vikrant Seth", status: "Scheduled" },
-  ];
-
-  // Merge live AI booked appointments with defaults
-  const allAppointments = [
-    ...appointments.map(a => ({
-      ...a,
-      doctor: a.department === "Cardiology" ? "Dr. Rajesh Gupta" : "Dr. Ananya Rao",
-      status: "Confirmed (AI)"
-    })),
-    ...defaultAppointments.filter(d => !appointments.some(a => a.phone_number === d.phone_number))
-  ];
-
-  const filteredAppointments = allAppointments.filter(appt => {
+  const filteredAppointments = appointments.filter(appt => {
     const matchesSearch = appt.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           appt.phone_number.includes(searchTerm) ||
                           appt.department.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || appt.status.includes(statusFilter);
+    const matchesStatus = statusFilter === 'All' || (appt.status || 'Confirmed').includes(statusFilter);
     return matchesSearch && matchesStatus;
   });
 
@@ -66,15 +51,18 @@ export default function AppointmentsPage() {
             Appointments Schedule
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Manage hospital consultations, doctor schedules, and live AI WhatsApp bookings.
+            Real-time doctor consultations, OPD schedule, and live AI WhatsApp bookings.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-medium text-xs sm:text-sm shadow-xs">
-            <Plus className="h-4 w-4 mr-1.5" />
-            Book Walk-in Appointment
-          </Button>
+          <Link
+            href="/demo"
+            className="inline-flex items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 font-medium text-xs sm:text-sm px-4 py-2 shadow-xs transition-colors gap-2"
+          >
+            <Bot className="h-4 w-4" />
+            <span>Book via AI Receptionist</span>
+          </Link>
         </div>
       </div>
 
@@ -82,23 +70,23 @@ export default function AppointmentsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
           <p className="text-xs font-semibold uppercase text-muted-foreground">Total Bookings</p>
-          <p className="mt-1 text-2xl font-bold text-foreground">{allAppointments.length}</p>
+          <p className="mt-1 text-2xl font-bold text-foreground">{appointments.length}</p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
           <p className="text-xs font-semibold uppercase text-muted-foreground">AI Confirmed</p>
           <p className="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-            {allAppointments.filter(a => a.status.includes('Confirmed')).length}
+            {appointments.filter(a => (a.status || 'Confirmed').includes('Confirmed')).length}
           </p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
           <p className="text-xs font-semibold uppercase text-muted-foreground">Scheduled</p>
           <p className="mt-1 text-2xl font-bold text-sky-600 dark:text-sky-400">
-            {allAppointments.filter(a => a.status.includes('Scheduled')).length}
+            {appointments.filter(a => (a.status || '').includes('Scheduled')).length}
           </p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
-          <p className="text-xs font-semibold uppercase text-muted-foreground">No-Show Risk</p>
-          <p className="mt-1 text-2xl font-bold text-muted-foreground">0%</p>
+          <p className="text-xs font-semibold uppercase text-muted-foreground">WhatsApp Synced</p>
+          <p className="mt-1 text-2xl font-bold text-primary">100%</p>
         </div>
       </div>
 
@@ -107,7 +95,7 @@ export default function AppointmentsPage() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search patient, phone, doctor or department..."
+            placeholder="Search patient name, phone, doctor or specialty..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9 bg-muted/40 border-border text-xs focus-visible:ring-primary/20"
@@ -150,8 +138,8 @@ export default function AppointmentsPage() {
                 <TableCell colSpan={6} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Calendar className="size-8 text-muted-foreground/60" />
-                    <p className="text-sm font-medium text-foreground">No appointments match your filters</p>
-                    <p className="text-xs text-muted-foreground">Book appointments live in the AI Emulator demo or add walk-ins.</p>
+                    <p className="text-sm font-medium text-foreground">No appointments match your search</p>
+                    <p className="text-xs text-muted-foreground">Book appointments live in the AI Emulator demo.</p>
                   </div>
                 </TableCell>
               </TableRow>
@@ -163,7 +151,14 @@ export default function AppointmentsPage() {
                       <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
                         {appt.patient_name.slice(0, 2).toUpperCase()}
                       </div>
-                      <span className="text-xs font-semibold text-foreground">{appt.patient_name}</span>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold text-foreground">{appt.patient_name}</span>
+                        {appt.id.startsWith('appt-') && (
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
+                            <Sparkles className="h-2.5 w-2.5" /> Booked by AI
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell className="font-mono text-xs text-foreground">
@@ -185,7 +180,7 @@ export default function AppointmentsPage() {
                     <div className="flex flex-col">
                       <span className="text-xs font-medium text-foreground flex items-center gap-1">
                         <Stethoscope className="h-3 w-3 text-primary" />
-                        {appt.doctor}
+                        {appt.doctor || (appt.department === "Pediatrics" ? "Dr. Shalini Roy" : appt.department === "Orthopedics" ? "Dr. Vivek Menon" : "Dr. Rajesh Gupta")}
                       </span>
                       <span className="text-[11px] text-muted-foreground">{appt.department}</span>
                     </div>
@@ -193,7 +188,7 @@ export default function AppointmentsPage() {
                   <TableCell>
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="h-3 w-3" />
-                      {appt.status}
+                      {appt.status || "Confirmed (AI)"}
                     </span>
                   </TableCell>
                   <TableCell className="text-right">

@@ -87,29 +87,34 @@ html[data-mode="light"] {
 
 /* ---- DARK MODE ---- */
 html[data-mode="dark"] {
-  --background: oklch(0.13 0.015 240);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.17 0.015 240);
-  --card-2: oklch(0.20 0.015 240);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.17 0.015 240);
-  --popover-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.22 0.015 240);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.21 0.015 240);
-  --muted-foreground: oklch(0.65 0.015 240);
-  --accent: oklch(0.22 0.02 162);
+  --background: oklch(0.04 0.03 270); /* Deep Space Purple/Black */
+  --foreground: oklch(0.985 0.02 320);
+  --card: oklch(0.08 0.04 270);
+  --card-2: oklch(0.11 0.05 270);
+  --card-foreground: oklch(0.985 0.02 320);
+  --popover: oklch(0.08 0.04 270);
+  --popover-foreground: oklch(0.985 0.02 320);
+  --secondary: oklch(0.14 0.06 280);
+  --secondary-foreground: oklch(0.985 0.02 320);
+  --muted: oklch(0.12 0.04 270);
+  --muted-foreground: oklch(0.70 0.06 300);
+  --accent: oklch(0.65 0.28 340); /* Neon Pink / Cyberpunk Magenta */
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.26 0.015 240);
-  --input: oklch(0.26 0.015 240);
-  --radius: 0.75rem;
+  --border: oklch(0.22 0.1 300 / 0.4);
+  --input: oklch(0.15 0.06 270);
+  --radius: 1rem;
 
-  --sidebar: oklch(0.15 0.015 240);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.22 0.02 162);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.24 0.015 240);
+  --sidebar: oklch(0.06 0.03 270);
+  --sidebar-foreground: oklch(0.95 0.02 320);
+  --sidebar-accent: oklch(0.65 0.28 340 / 0.2);
+  --sidebar-accent-foreground: oklch(0.95 0.05 340);
+  --sidebar-border: oklch(0.22 0.1 300 / 0.3);
+  
+  --primary: oklch(0.70 0.22 320); /* Vibrant Cyberpunk Neon Magenta / Purple */
+  --primary-foreground: oklch(0.985 0 0);
+  --primary-hover: oklch(0.75 0.22 320);
+  --primary-soft: oklch(0.70 0.22 320 / 0.15);
 }
 
 /* ---- ACCENT THEMES (Default: Emerald Medical) ---- */

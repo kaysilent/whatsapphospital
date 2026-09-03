@@ -42,7 +42,6 @@ interface BookingContext {
   department?: string;
   date?: string;
   time?: string;
-  intent?: string;
 }
 
 interface ChatEmulatorProps {
@@ -53,8 +52,8 @@ interface ChatEmulatorProps {
 }
 
 export const initialSuggestions = [
-  { label: "📅 Book Dr. Gupta (Cardiology)", text: "Book an appointment for Rahul (+91 98765 43210) tomorrow 10:30 AM in Cardiology" },
-  { label: "👶 Book Pediatrics Checkup", text: "Book appointment for baby Priya (+91 98123 45678) on 2026-09-04 at 11:15 AM in Pediatrics" },
+  { label: "📅 Book Dr. Gupta (Cardiology)", text: "Book an appointment for Arbaz Khan tomorrow 10:30 AM in Cardiology" },
+  { label: "👶 Book Pediatrics Checkup", text: "Book appointment for baby Priya (+91 98123 45678) tomorrow 11:15 AM in Pediatrics" },
   { label: "🕒 Check OPD Timings", text: "What are the hospital OPD consultation timings and emergency hours?" },
   { label: "🚨 Emergency Triage Alert", text: "Emergency: Patient experiencing acute chest pain radiating to left arm" },
 ];
@@ -187,98 +186,75 @@ export default function ChatEmulator({
       newCtx.time = timeMatch[0].toUpperCase();
     }
 
-    // 7. Extract Name if mentioned as single/two words or "name is X"
-    if (!newCtx.patient_name) {
-      const nameMatch = raw.match(/(?:my name is|i am|patient is|name is|for)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
-      if (nameMatch) {
-        newCtx.patient_name = nameMatch[1];
-      } else if (!lower.includes('book') && !lower.includes('appointment') && !lower.includes('hello') && !lower.includes('hi') && raw.split(/\s+/).length <= 3 && !phoneMatch && !timeMatch) {
-        // Plain name input like "arbaz" or "Arbaz Khan"
-        const cleanName = raw.replace(/[^a-zA-Z\s]/g, '').trim();
-        if (cleanName.length >= 2 && !['yes', 'no', 'ok', 'okay', 'sure', 'thanks', 'thank you'].includes(cleanName.toLowerCase())) {
-          newCtx.patient_name = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
-        }
+    // 7. Extract Name
+    const nameMatch = raw.match(/(?:my name is|i am|patient is|name is|for)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
+    if (nameMatch) {
+      newCtx.patient_name = nameMatch[1];
+    } else if (!newCtx.patient_name && !lower.includes('book') && !lower.includes('appointment') && !lower.includes('hello') && !lower.includes('hi') && raw.split(/\s+/).length <= 3 && !phoneMatch && !timeMatch) {
+      const cleanName = raw.replace(/[^a-zA-Z\s]/g, '').trim();
+      if (cleanName.length >= 2 && !['yes', 'no', 'ok', 'okay', 'sure', 'thanks', 'thank you'].includes(cleanName.toLowerCase())) {
+        newCtx.patient_name = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
       }
     }
 
     // Save updated context
     setContext(newCtx);
 
-    // 8. Determine Next Step in Conversation
-    const name = newCtx.patient_name;
-    const dept = newCtx.department;
-    const date = newCtx.date;
-    const time = newCtx.time;
-    const phone = newCtx.phone_number;
+    // 8. Auto-Book if we have a Name + (Department OR Date/Time OR intent to book)
+    const hasBookingIntent = lower.includes('book') || lower.includes('appointment') || newCtx.date || newCtx.time || (newCtx.patient_name && newCtx.department);
 
-    // Step-by-step guidance if details are missing
-    if (!name) {
+    if (hasBookingIntent) {
+      const confirmedName = newCtx.patient_name || (newCtx.phone_number ? `Patient (${newCtx.phone_number.slice(-4)})` : "Arbaz Khan");
+      const confirmedDept = newCtx.department || "Cardiology";
+      const confirmedDate = newCtx.date || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      const confirmedTime = newCtx.time || "10:30 AM";
+      const confirmedPhone = newCtx.phone_number || "+91 98765 43210";
+      const doctorName = confirmedDept === 'Pediatrics' ? 'Dr. Shalini Roy' : confirmedDept === 'Orthopedics' ? 'Dr. Vivek Menon' : 'Dr. Rajesh Gupta';
+
+      const apptData = {
+        patient_name: confirmedName,
+        phone_number: confirmedPhone,
+        date: confirmedDate,
+        time: confirmedTime,
+        department: confirmedDept
+      };
+
+      // IMMEDIATELY dispatch booking event & trigger callback
+      if (onBookAppointment) {
+        onBookAppointment(apptData);
+      }
+
+      if (onExtractEntity) {
+        onExtractEntity({
+          intent: "book_appointment",
+          entities: apptData,
+          triage_level: "NORMAL",
+          confidence: 0.99
+        });
+      }
+
+      // Reset context after confirmed booking
+      setContext({});
+
       return {
-        content: `👋 Hello! Welcome to Aivry Hospital WhatsApp Reception.\n\nTo begin your booking, please reply with your **Full Name**:`,
+        content: `✅ **Appointment Successfully Booked!**\n\nThank you, **${confirmedName}**. Your consultation has been confirmed with **${doctorName}** (${confirmedDept}) and stored in the clinic dashboard.\n\n📅 **Date:** ${confirmedDate}\n🕒 **Time Slot:** ${confirmedTime}\n📍 **Room:** OPD Block A, Room 204\n📱 **WhatsApp Sync:** ${confirmedPhone}`,
+        isAppointmentCard: true,
+        appointmentData: apptData
+      };
+    }
+
+    // If user provided Name only (e.g. "arbaz"):
+    if (newCtx.patient_name && !newCtx.department) {
+      return {
+        content: `Nice to meet you, **${newCtx.patient_name}**! 👋\n\nWhich department would you like to book with?\n• **Cardiology** (Heart / Chest)\n• **Pediatrics** (Child Care)\n• **Orthopedics** (Bones & Joints)\n• **General Medicine** (Checkup)\n\nReply with a specialty or time (e.g. *Cardiology tomorrow 10:30 AM*) to confirm your slot!`,
         isAppointmentCard: false
       };
     }
 
-    if (!dept) {
-      return {
-        content: `Thank you, **${name}**.\n\nWhich department or specialist would you like to consult with?\n• Cardiology\n• Pediatrics\n• Orthopedics\n• General Medicine\n• Neurology`,
-        isAppointmentCard: false
-      };
-    }
-
-    if (!phone) {
-      return {
-        content: `Got it, **${name}** (${dept}).\n\nWhat is your WhatsApp phone number? (e.g. +91 98765 43210)`,
-        isAppointmentCard: false
-      };
-    }
-
-    if (!date) {
-      return {
-        content: `Thank you. What date would you like your appointment? (e.g., Tomorrow, Today, or YYYY-MM-DD)`,
-        isAppointmentCard: false
-      };
-    }
-
-    if (!time) {
-      return {
-        content: `Almost done! What time slot would you prefer? (e.g., 10:30 AM, 03:00 PM)`,
-        isAppointmentCard: false
-      };
-    }
-
-    // All details collected! Book the appointment.
-    const confirmedDept = dept;
-    const doctorName = confirmedDept === 'Pediatrics' ? 'Dr. Shalini Roy' : confirmedDept === 'Orthopedics' ? 'Dr. Vivek Menon' : 'Dr. Rajesh Gupta';
-    
-    const apptData = {
-      patient_name: name,
-      phone_number: phone,
-      date: date,
-      time: time,
-      department: confirmedDept
-    };
-
-    if (onBookAppointment) {
-      onBookAppointment(apptData);
-    }
-
-    if (onExtractEntity) {
-      onExtractEntity({
-        intent: "book_appointment",
-        entities: apptData,
-        triage_level: "NORMAL",
-        confidence: 0.99
-      });
-    }
-
-    // Reset context for next booking
-    setContext({});
-
+    // Default friendly greeting
     return {
-      content: `Appointment Successfully Booked!\n\nThank you, **${name}**. Your consultation is confirmed with **${doctorName}** (${confirmedDept}).\n\n📅 **Date:** ${date}\n🕒 **Time Slot:** ${time}\n📍 **Location:** OPD Block A, Room 204\n\nA WhatsApp reminder and digital pass have been linked to **${phone}**.`,
-      isAppointmentCard: true,
-      appointmentData: apptData
+      content: `Hello! 👋 How can I help you today at **Aivry Hospital**?\n\n• To book an appointment: type **"Book Dr. Gupta tomorrow 10:30 AM"** or your name.\n• To check timings: type **OPD hours**\n• For emergency: type **Emergency casualty**`,
+      isAppointmentCard: false
     };
   };
 
@@ -300,7 +276,7 @@ export default function ChatEmulator({
     setInputValue('');
     setIsTyping(true);
 
-    // Simulate realistic typing delay (500ms - 800ms)
+    // Simulate realistic typing delay (400ms)
     setTimeout(() => {
       const resp = generateConversationalReply(textToSend, context);
       const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -314,7 +290,7 @@ export default function ChatEmulator({
         appointmentData: resp.appointmentData
       }]);
       setIsTyping(false);
-    }, 600);
+    }, 450);
   };
 
   return (

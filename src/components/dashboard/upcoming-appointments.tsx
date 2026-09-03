@@ -3,8 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useDemoState } from '@/hooks/use-demo-state';
-import { Calendar, Clock, ArrowRight, UserCheck, Phone } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Calendar, Clock, ArrowRight, UserCheck, Phone, Sparkles } from 'lucide-react';
 
 export function UpcomingAppointments() {
   const { appointments } = useDemoState();
@@ -17,13 +16,13 @@ export function UpcomingAppointments() {
             <Calendar className="h-4 w-4 text-primary" />
             Live Clinic Bookings
           </h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Real-time appointments confirmed by AI Receptionist.</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Real-time appointments confirmed by AI WhatsApp Receptionist.</p>
         </div>
         <Link 
           href="/appointments"
           className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
         >
-          View All <ArrowRight className="h-3 w-3" />
+          View All ({appointments.length}) <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
 
@@ -34,9 +33,9 @@ export function UpcomingAppointments() {
               <Calendar className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-foreground">No Bookings Yet Today</p>
+              <p className="text-xs font-semibold text-foreground">No Bookings Yet</p>
               <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Open the AI Receptionist demo to simulate live patient appointment booking over WhatsApp.
+                Open the AI Receptionist simulator to book appointments live over WhatsApp.
               </p>
             </div>
             <Link 
@@ -58,7 +57,14 @@ export function UpcomingAppointments() {
                     {appt.patient_name.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-foreground truncate">{appt.patient_name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-semibold text-foreground truncate">{appt.patient_name}</p>
+                      {appt.id.startsWith('appt-') && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-1.5 py-0.2 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                          <Sparkles className="h-2 w-2" /> New
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
                       <span className="inline-flex items-center gap-1 font-mono">
                         <Phone className="h-2.5 w-2.5" />
