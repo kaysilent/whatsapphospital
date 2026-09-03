@@ -158,6 +158,87 @@ function parsePhoneInput(input: string): string | null {
   return null;
 }
 
+// WhatsApp rich text parser that removes markdown asterisks and cleans up list items
+function renderFormattedWhatsAppText(text: string) {
+  if (!text) return null;
+
+  const lines = text.split('\n');
+
+  return (
+    <div className="space-y-1 leading-relaxed text-foreground">
+      {lines.map((line, lIdx) => {
+        let trimmed = line.trim();
+        if (!trimmed) {
+          return <div key={lIdx} className="h-1.5" />;
+        }
+
+        // Clean up markdown bullet lists: "* **item**", "* item", "- item", "• item"
+        let isBullet = false;
+        if (/^[\*\-•\+]\s+/.test(trimmed)) {
+          isBullet = true;
+          trimmed = trimmed.replace(/^[\*\-•\+]\s+/, '');
+        }
+
+        // Parse inline formatting: **bold**, *bold*, _italic_, ~strike~, `code`
+        const tokens: React.ReactNode[] = [];
+        let keyCounter = 0;
+
+        // Pattern matching: **bold** OR *bold* OR _italic_ OR ~strike~ OR `code`
+        const regex = /(\*\*([^*]+)\*\*|\*([^*\s][^*]*[^*\s]|[^*])\*|_([^_]+)_|~([^~]+)~|`([^`]+)`)/g;
+        let lastIndex = 0;
+        let match: RegExpExecArray | null;
+
+        while ((match = regex.exec(trimmed)) !== null) {
+          if (match.index > lastIndex) {
+            tokens.push(trimmed.substring(lastIndex, match.index).replace(/\*{2,}/g, ''));
+          }
+
+          if (match[2]) {
+            // **bold**
+            tokens.push(<strong key={keyCounter++} className="font-semibold text-foreground">{match[2]}</strong>);
+          } else if (match[3]) {
+            // *bold*
+            tokens.push(<strong key={keyCounter++} className="font-semibold text-foreground">{match[3]}</strong>);
+          } else if (match[4]) {
+            // _italic_
+            tokens.push(<em key={keyCounter++} className="italic">{match[4]}</em>);
+          } else if (match[5]) {
+            // ~strike~
+            tokens.push(<del key={keyCounter++} className="line-through opacity-75">{match[5]}</del>);
+          } else if (match[6]) {
+            // `code`
+            tokens.push(<code key={keyCounter++} className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[11px]">{match[6]}</code>);
+          }
+
+          lastIndex = regex.lastIndex;
+        }
+
+        if (lastIndex < trimmed.length) {
+          const remainingText = trimmed.substring(lastIndex).replace(/\*{2,}/g, '').replace(/^\*\s*/, '');
+          if (remainingText) {
+            tokens.push(remainingText);
+          }
+        }
+
+        if (isBullet) {
+          return (
+            <div key={lIdx} className="flex items-start gap-1.5 pl-0.5 my-0.5">
+              <span className="text-[#00a884] dark:text-emerald-400 font-bold select-none leading-tight">•</span>
+              <div className="flex-1">{tokens.length > 0 ? tokens : trimmed}</div>
+            </div>
+          );
+        }
+
+        return (
+          <p key={lIdx}>
+            {tokens.length > 0 ? tokens : trimmed}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 interface ChatEmulatorProps {
   onBookAppointment?: (appt: { patient_name: string; phone_number: string; date: string; time: string; department: string }) => void;
   onRescheduleAppointment?: (patient_name: string, new_date: string, new_time: string) => void;
@@ -882,7 +963,7 @@ export default function ChatEmulator({
               className={`wa-bubble ${msg.role === 'user' ? 'wa-bubble-user' : 'wa-bubble-ai'}`}
             >
               <div className="wa-bubble-content">
-                <p className="whitespace-pre-line leading-relaxed">{msg.content}</p>
+                {renderFormattedWhatsAppText(msg.content)}
 
                 {/* Grounding Source Badge if Answer retrieved from Knowledge Base */}
                 {msg.groundingSource && (
