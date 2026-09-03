@@ -46,14 +46,14 @@ export default function ForgotPasswordPage() {
       <div className="relative flex min-h-screen items-center justify-center bg-background px-4 overflow-hidden">
         <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-emerald-500/15 blur-3xl" />
         <Card className="relative z-10 w-full max-w-md border-border bg-card shadow-2xl">
-          <CardHeader className="items-center text-center">
-            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+          <CardHeader className="flex flex-col items-center justify-center text-center pb-4">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
               <CheckCircle className="h-7 w-7" />
             </div>
-            <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
+            <CardTitle className="text-2xl font-bold tracking-tight text-foreground text-center">
               Reset Link Sent
             </CardTitle>
-            <CardDescription className="text-xs text-muted-foreground mt-2">
+            <CardDescription className="text-xs text-muted-foreground mt-2 text-center">
               We&apos;ve sent a password reset link to <span className="font-semibold text-foreground">{email}</span>. Please check your inbox.
             </CardDescription>
           </CardHeader>
@@ -78,12 +78,12 @@ export default function ForgotPasswordPage() {
       <div className="absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-teal-500/15 blur-3xl" />
 
       <Card className="relative z-10 w-full max-w-md border-border bg-card shadow-2xl">
-        <CardHeader className="items-center text-center pb-4">
-          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
+        <CardHeader className="flex flex-col items-center justify-center text-center pb-4">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
             <Activity className="h-7 w-7 text-white" />
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight text-foreground">Reset Clinic Password</CardTitle>
-          <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-xs">
+          <CardTitle className="text-2xl font-bold tracking-tight text-foreground text-center">Reset Clinic Password</CardTitle>
+          <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-xs text-center">
             Enter your registered hospital email to receive recovery instructions.
           </CardDescription>
         </CardHeader>

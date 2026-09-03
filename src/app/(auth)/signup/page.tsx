@@ -64,7 +64,7 @@ function SignupPageInner() {
         data: {
           full_name: fullName,
         },
-        ...(emailRedirectTo ? { emailRedirectTo } : {}),
+        emailRedirectTo,
       },
     });
 
@@ -83,14 +83,14 @@ function SignupPageInner() {
       <div className="relative flex min-h-screen items-center justify-center bg-background px-4 overflow-hidden">
         <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-emerald-500/15 blur-3xl" />
         <Card className="relative z-10 w-full max-w-md border-border bg-card shadow-2xl">
-          <CardHeader className="items-center text-center">
-            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+          <CardHeader className="flex flex-col items-center justify-center text-center pb-4">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
               <CheckCircle className="h-7 w-7" />
             </div>
-            <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
+            <CardTitle className="text-2xl font-bold tracking-tight text-foreground text-center">
               Verification Link Sent
             </CardTitle>
-            <CardDescription className="text-xs text-muted-foreground mt-2">
+            <CardDescription className="text-xs text-muted-foreground mt-2 text-center">
               We&apos;ve sent a confirmation link to <span className="font-semibold text-foreground">{email}</span>. Click the link to activate your hospital access.
             </CardDescription>
           </CardHeader>
@@ -121,14 +121,14 @@ function SignupPageInner() {
       <div className="absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-teal-500/15 blur-3xl" />
 
       <Card className="relative z-10 w-full max-w-md border-border bg-card shadow-2xl">
-        <CardHeader className="items-center text-center pb-4">
-          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
+        <CardHeader className="flex flex-col items-center justify-center text-center pb-4">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
             <Activity className="h-7 w-7 text-white" />
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
+          <CardTitle className="text-2xl font-bold tracking-tight text-foreground text-center">
             {inviteToken ? "Join Clinic Team" : "Create Clinic Account"}
           </CardTitle>
-          <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-xs">
+          <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-xs text-center">
             {inviteToken
               ? "Set up your credentials to join your hospital team"
               : "Get started with Aivry WhatsApp Hospital CRM"}
@@ -152,7 +152,7 @@ function SignupPageInner() {
                 <Input
                   id="fullName"
                   type="text"
-                  placeholder="Dr. Ananya Rao"
+                  placeholder="Dr. Rajesh Gupta"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required
@@ -163,14 +163,14 @@ function SignupPageInner() {
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="email" className="text-xs font-semibold text-foreground">
-                Hospital Email
+                Work Email Address
               </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
-                  placeholder="ananya@hospital.com"
+                  placeholder="doctor@hospital.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -192,6 +192,7 @@ function SignupPageInner() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  minLength={6}
                   className="pl-9 h-10 border-border bg-muted/40 text-foreground placeholder:text-muted-foreground text-xs focus-visible:ring-primary/20 focus-visible:border-primary"
                 />
               </div>
@@ -210,6 +211,7 @@ function SignupPageInner() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  minLength={6}
                   className="pl-9 h-10 border-border bg-muted/40 text-foreground placeholder:text-muted-foreground text-xs focus-visible:ring-primary/20 focus-visible:border-primary"
                 />
               </div>
@@ -220,7 +222,7 @@ function SignupPageInner() {
               disabled={loading}
               className="mt-2 h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold shadow-md text-xs sm:text-sm disabled:opacity-50"
             >
-              {loading ? "Creating account..." : "Register Hospital Account"}
+              {loading ? "Creating account..." : "Complete Registration"}
             </Button>
           </form>
 
@@ -234,7 +236,7 @@ function SignupPageInner() {
               }
               className="font-semibold text-primary hover:underline"
             >
-              Sign in
+              Sign in instead
             </Link>
           </div>
         </CardContent>
