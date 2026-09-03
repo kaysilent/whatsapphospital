@@ -34,28 +34,73 @@ function LoginPageInner() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setError(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      // 1. Try server-side login first so Set-Cookie headers are set directly on HTTP response
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
 
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        // Fallback to client-side signIn if API route fails or returns error
+        const supabase = createClient();
+        const { error: clientError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+
+        if (clientError) {
+          setError(data.error || clientError.message);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Also ensure client-side session is refreshed
+      try {
+        const supabase = createClient();
+        await supabase.auth.getSession();
+      } catch {}
+
+      const destination = inviteToken
+        ? `/join/${encodeURIComponent(inviteToken)}`
+        : "/dashboard";
+
+      // Small tick to ensure browser has committed cookies
+      setTimeout(() => {
+        window.location.href = destination;
+      }, 50);
+    } catch (err: any) {
+      console.error("[Login Error]:", err);
+      // Fallback to client-side
+      try {
+        const supabase = createClient();
+        const { error: clientError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (clientError) {
+          setError(clientError.message);
+          setLoading(false);
+          return;
+        }
+        window.location.href = inviteToken ? `/join/${encodeURIComponent(inviteToken)}` : "/dashboard";
+      } catch (clientErr: any) {
+        setError(clientErr.message || "An unexpected error occurred. Please try again.");
+        setLoading(false);
+      }
     }
-
-    const destination = inviteToken
-      ? `/join/${encodeURIComponent(inviteToken)}`
-      : "/dashboard";
-    window.location.href = destination;
   };
 
   return (
