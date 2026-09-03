@@ -18,6 +18,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { LlmConfigPanel } from '@/components/settings/llm-config-panel';
 
 const HOSPITAL_PROMPT = `You are an intelligent, empathetic AI receptionist for Aivry Hospital. Your goal is to help patients book and reschedule doctor appointments, check OPD consultation timings, or handle emergency triage. Be polite, concise, natural, and helpful like a real human receptionist. Collect booking details step-by-step: patient's name, phone number, department (e.g. Cardiology, Pediatrics, General Medicine, Orthopedics, Neurology), preferred date, and preferred time slot. Once details are confirmed, complete the booking.`;
 
@@ -108,6 +109,9 @@ export function AiAgentPanel() {
           <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/20">Active</span>
         </div>
       )}
+
+      {/* LLM Model & API Key Provider Manager */}
+      <LlmConfigPanel />
 
       {/* System Prompt Card */}
       <div className="space-y-4 rounded-xl border border-border bg-card p-5 sm:p-6 shadow-xs">

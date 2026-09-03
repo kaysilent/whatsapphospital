@@ -1526,11 +1526,34 @@ Post-Care General Rules:
   }
 ];
 
+export type LLMProvider = 'gemini' | 'openai' | 'anthropic' | 'groq' | 'custom';
+
+export interface LLMConfig {
+  provider: LLMProvider;
+  apiKey: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  customBaseUrl?: string;
+  isConfigured: boolean;
+}
+
+export const defaultLLMConfig: LLMConfig = {
+  provider: 'gemini',
+  apiKey: '',
+  model: 'gemini-2.5-flash',
+  temperature: 0.7,
+  maxTokens: 1024,
+  customBaseUrl: '',
+  isConfigured: false,
+};
+
 type DemoState = {
   systemPrompt: string;
   isCalendarConnected: boolean;
   appointments: Appointment[];
   knowledgeItems: KnowledgeItem[];
+  llmConfig: LLMConfig;
 };
 
 const defaultAppointments: Appointment[] = [
@@ -1544,7 +1567,8 @@ const defaultState: DemoState = {
   systemPrompt: DEFAULT_LA_FLEUR_SYSTEM_PROMPT,
   isCalendarConnected: true,
   appointments: defaultAppointments,
-  knowledgeItems: defaultKnowledgeItems
+  knowledgeItems: defaultKnowledgeItems,
+  llmConfig: defaultLLMConfig,
 };
 
 // Global event emitter for same-tab reactivity
@@ -1557,6 +1581,7 @@ if (typeof window !== 'undefined') {
   try {
     const savedPrompt = localStorage.getItem('wacrm_system_prompt');
     const savedKnowledge = localStorage.getItem('wacrm_knowledge_items');
+    const savedLlm = localStorage.getItem('wacrm_llm_config');
     const saved = localStorage.getItem('wacrm_demo_state');
     
     let activePrompt = DEFAULT_LA_FLEUR_SYSTEM_PROMPT;
@@ -1574,6 +1599,16 @@ if (typeof window !== 'undefined') {
       } catch {}
     }
 
+    let activeLlm: LLMConfig = defaultLLMConfig;
+    if (savedLlm) {
+      try {
+        const parsedL = JSON.parse(savedLlm);
+        if (parsedL && parsedL.provider) {
+          activeLlm = { ...defaultLLMConfig, ...parsedL };
+        }
+      } catch {}
+    }
+
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed) {
@@ -1585,11 +1620,14 @@ if (typeof window !== 'undefined') {
           ? parsed.knowledgeItems
           : activeKnowledge;
 
+        const llmToUse = parsed.llmConfig ? { ...defaultLLMConfig, ...parsed.llmConfig, ...activeLlm } : activeLlm;
+
         currentState = {
           ...defaultState,
           ...parsed,
           systemPrompt: promptToUse,
           knowledgeItems: knowledgeToUse,
+          llmConfig: llmToUse,
           appointments: Array.isArray(parsed.appointments) && parsed.appointments.length > 0 
             ? parsed.appointments 
             : defaultAppointments
@@ -1599,7 +1637,8 @@ if (typeof window !== 'undefined') {
       currentState = {
         ...defaultState,
         systemPrompt: activePrompt,
-        knowledgeItems: activeKnowledge
+        knowledgeItems: activeKnowledge,
+        llmConfig: activeLlm
       };
     }
   } catch (e) {
@@ -1623,6 +1662,10 @@ function updateState(newState: Partial<DemoState>) {
       if (newState.knowledgeItems !== undefined) {
         localStorage.setItem('wacrm_knowledge_items', JSON.stringify(currentState.knowledgeItems));
         window.dispatchEvent(new CustomEvent('wacrm_knowledge_updated', { detail: currentState.knowledgeItems }));
+      }
+      if (newState.llmConfig !== undefined) {
+        localStorage.setItem('wacrm_llm_config', JSON.stringify(currentState.llmConfig));
+        window.dispatchEvent(new CustomEvent('wacrm_llm_config_updated', { detail: currentState.llmConfig }));
       }
     } catch (e) {
       console.error("Failed to save state to localStorage", e);
@@ -1701,11 +1744,21 @@ export function useDemoState() {
       }
     };
 
+    const handleLlmEvent = (e: Event) => {
+      const custom = e as CustomEvent<LLMConfig>;
+      if (custom.detail) {
+        setState(prev => ({ ...prev, llmConfig: custom.detail }));
+      } else {
+        setState({ ...currentState });
+      }
+    };
+
     listeners.add(handleUpdate);
     window.addEventListener('storage', handleStorage);
     window.addEventListener('wacrm_appointments_updated', handleCustomEvent);
     window.addEventListener('wacrm_system_prompt_updated', handlePromptEvent);
     window.addEventListener('wacrm_knowledge_updated', handleKnowledgeEvent);
+    window.addEventListener('wacrm_llm_config_updated', handleLlmEvent);
     
     // Ensure we have latest state on mount
     handleUpdate();
@@ -1716,6 +1769,7 @@ export function useDemoState() {
       window.removeEventListener('wacrm_appointments_updated', handleCustomEvent);
       window.removeEventListener('wacrm_system_prompt_updated', handlePromptEvent);
       window.removeEventListener('wacrm_knowledge_updated', handleKnowledgeEvent);
+      window.removeEventListener('wacrm_llm_config_updated', handleLlmEvent);
     };
   }, []);
 
@@ -1725,6 +1779,20 @@ export function useDemoState() {
 
   const resetSystemPrompt = useCallback(() => {
     updateState({ systemPrompt: DEFAULT_LA_FLEUR_SYSTEM_PROMPT });
+  }, []);
+
+  const setLLMConfig = useCallback((config: Partial<LLMConfig>) => {
+    const updated = {
+      ...currentState.llmConfig,
+      ...config,
+      isConfigured: !!(config.apiKey !== undefined ? config.apiKey.trim() : currentState.llmConfig.apiKey.trim())
+    };
+    updateState({ llmConfig: updated });
+    return updated;
+  }, []);
+
+  const resetLLMConfig = useCallback(() => {
+    updateState({ llmConfig: defaultLLMConfig });
   }, []);
 
   const setIsCalendarConnected = useCallback((connected: boolean) => {
@@ -1807,6 +1875,8 @@ export function useDemoState() {
     ...state,
     setSystemPrompt,
     resetSystemPrompt,
+    setLLMConfig,
+    resetLLMConfig,
     setIsCalendarConnected,
     addAppointment,
     clearAppointments,

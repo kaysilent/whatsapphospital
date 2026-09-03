@@ -24,7 +24,7 @@ import {
   FileText,
   Globe
 } from 'lucide-react';
-import { useDemoState, DEFAULT_LA_FLEUR_SYSTEM_PROMPT, KnowledgeItem } from '@/hooks/use-demo-state';
+import { useDemoState, DEFAULT_LA_FLEUR_SYSTEM_PROMPT, KnowledgeItem, defaultLLMConfig } from '@/hooks/use-demo-state';
 
 type Message = {
   id: string;
@@ -171,7 +171,7 @@ export default function ChatEmulator({
   onExtractEntity,
   systemPrompt = DEFAULT_LA_FLEUR_SYSTEM_PROMPT 
 }: ChatEmulatorProps) {
-  const { appointments = [], knowledgeItems = [] } = useDemoState();
+  const { appointments = [], knowledgeItems = [], llmConfig = defaultLLMConfig } = useDemoState();
   const isLaFleur = systemPrompt.includes("La Fleur") || systemPrompt.includes("LA FLEUR");
   
   // Extract or formulate bot persona title
@@ -699,6 +699,7 @@ export default function ChatEmulator({
     const textToSend = (customText || inputValue).trim();
     if (!textToSend) return;
 
+    const lowerText = textToSend.toLowerCase();
     const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const userMessage: Message = { 
       id: `u-${Date.now()}`,
@@ -712,7 +713,62 @@ export default function ChatEmulator({
     setInputValue('');
     setIsTyping(true);
 
-    // Natural assistant delay
+    // Check if we should call live LLM (only if configured and not in active step-by-step slot booking)
+    const isDirectBookingTrigger = context.step !== 'idle' || 
+      lowerText.includes("book") || 
+      lowerText.includes("appointment") || 
+      lowerText.includes("schedule") || 
+      lowerText.includes("slot");
+
+    if (llmConfig?.isConfigured && llmConfig.apiKey && !isDirectBookingTrigger) {
+      // Assemble enabled Knowledge Base documents
+      const enabledDocs = knowledgeItems.filter(k => k.isEnabled);
+      const kbContext = enabledDocs.map(d => `[${d.title}]: ${d.content}`).join('\n\n');
+
+      try {
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: textToSend,
+            systemPrompt,
+            knowledgeContext: kbContext,
+            llmConfig,
+            conversationHistory: newMessages.slice(-6)
+          })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.content) {
+          const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const matchedDoc = searchKnowledge(textToSend, knowledgeItems);
+
+          setMessages(prev => [...prev, {
+            id: `ai-${Date.now()}`,
+            role: 'ai',
+            content: data.content,
+            time: aiTime,
+            isAppointmentCard: false,
+            groundingSource: matchedDoc ? {
+              type: matchedDoc.item.type,
+              title: matchedDoc.item.title,
+              source: `${data.provider.toUpperCase()} (${data.model}) + ${matchedDoc.item.title}`
+            } : {
+              type: 'text',
+              title: `${data.provider.toUpperCase()}`,
+              source: `Live ${data.provider.toUpperCase()} (${data.model})`
+            }
+          }]);
+          setIsTyping(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("[LLM Live Call Failed, falling back to local engine]:", err);
+      }
+    }
+
+    // Natural assistant delay fallback
     setTimeout(() => {
       const resp = generateConversationalReply(textToSend, context);
       const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -763,7 +819,14 @@ export default function ChatEmulator({
                 <span className="font-bold text-xs tracking-tight text-white">{clinicTitle}</span>
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-200 fill-emerald-300 text-white" />
               </div>
-              <p className="text-[9.5px] text-emerald-100/90 font-medium">Official Verified Business Account</p>
+              <p className="text-[9.5px] text-emerald-100/90 font-medium flex items-center gap-1">
+                <span>Official Verified Business</span>
+                {llmConfig.isConfigured && (
+                  <span className="bg-white/20 text-white px-1.5 py-0.5 rounded text-[8.5px] font-bold uppercase tracking-wider">
+                    ⚡ {llmConfig.provider} ({llmConfig.model.split('-')[0]})
+                  </span>
+                )}
+              </p>
             </div>
           </div>
 

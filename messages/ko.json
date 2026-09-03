@@ -1531,6 +1531,12 @@
       "ai": "AI 어시스턴트",
       "knowledge": "지식 베이스"
     },
+    "roles": {
+      "owner": "소유자",
+      "admin": "관리자",
+      "agent": "상담원",
+      "viewer": "조회자"
+    },
     "groups": {
       "account": "계정",
       "workspace": "워크스페이스"
