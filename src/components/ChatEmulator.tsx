@@ -713,14 +713,8 @@ export default function ChatEmulator({
     setInputValue('');
     setIsTyping(true);
 
-    // Check if we should call live LLM (only if configured and not in active step-by-step slot booking)
-    const isDirectBookingTrigger = context.step !== 'idle' || 
-      lowerText.includes("book") || 
-      lowerText.includes("appointment") || 
-      lowerText.includes("schedule") || 
-      lowerText.includes("slot");
-
-    if (llmConfig?.isConfigured && llmConfig.apiKey && !isDirectBookingTrigger) {
+    // Route ALL user messages through the live LLM API
+    if (llmConfig?.isConfigured && llmConfig.apiKey) {
       // Assemble enabled Knowledge Base documents
       const enabledDocs = knowledgeItems.filter(k => k.isEnabled);
       const kbContext = enabledDocs.map(d => `[${d.title}]: ${d.content}`).join('\n\n');
@@ -734,7 +728,8 @@ export default function ChatEmulator({
             systemPrompt,
             knowledgeContext: kbContext,
             llmConfig,
-            conversationHistory: newMessages.slice(-6)
+            existingAppointments: appointments,
+            conversationHistory: newMessages.slice(-8)
           })
         });
 
@@ -744,12 +739,27 @@ export default function ChatEmulator({
           const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const matchedDoc = searchKnowledge(textToSend, knowledgeItems);
 
+          // If LLM returned a completed appointment booking
+          if (data.isAppointmentCard && data.appointmentData) {
+            if (onBookAppointment) {
+              onBookAppointment(data.appointmentData);
+            }
+            if (onExtractEntity) {
+              onExtractEntity({
+                intent: "book_appointment",
+                entities: data.appointmentData,
+                confidence: 0.99
+              });
+            }
+          }
+
           setMessages(prev => [...prev, {
             id: `ai-${Date.now()}`,
             role: 'ai',
             content: data.content,
             time: aiTime,
-            isAppointmentCard: false,
+            isAppointmentCard: !!data.isAppointmentCard,
+            appointmentData: data.appointmentData || undefined,
             groundingSource: matchedDoc ? {
               type: matchedDoc.item.type,
               title: matchedDoc.item.title,
@@ -762,13 +772,28 @@ export default function ChatEmulator({
           }]);
           setIsTyping(false);
           return;
+        } else if (data.error === 'NO_API_KEY') {
+          // Notify user to enter key
+          const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          setMessages(prev => [...prev, {
+            id: `ai-${Date.now()}`,
+            role: 'ai',
+            content: `🔑 **LLM Engine Notice**\n\nTo enable live human-like conversational fluency powered by Google Gemini, please add your Gemini API Key under **Settings → AI Assistant**.\n\n*(Falling back to local clinical response)*`,
+            time: aiTime
+          }]);
         }
       } catch (err) {
-        console.warn("[LLM Live Call Failed, falling back to local engine]:", err);
+        console.warn("[LLM Live API call error, falling back to local engine]:", err);
+      }
+    } else {
+      // If no API key is set yet, show friendly guidance
+      if (messages.length === 1) {
+        const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        console.info("[ChatEmulator] To enable full Google Gemini LLM human fluency, configure your API Key in Settings → AI Assistant.");
       }
     }
 
-    // Natural assistant delay fallback
+    // Fallback assistant response
     setTimeout(() => {
       const resp = generateConversationalReply(textToSend, context);
       const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -783,7 +808,7 @@ export default function ChatEmulator({
         groundingSource: resp.groundingSource
       }]);
       setIsTyping(false);
-    }, 450);
+    }, 400);
   };
 
   return (
