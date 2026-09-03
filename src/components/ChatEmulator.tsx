@@ -16,10 +16,15 @@ import {
   Smile, 
   Calendar, 
   Clock, 
-  Stethoscope, 
-  AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Sparkle,
+  HeartPulse,
+  UserCheck,
+  BookOpen,
+  FileText,
+  Globe
 } from 'lucide-react';
+import { useDemoState, DEFAULT_LA_FLEUR_SYSTEM_PROMPT, KnowledgeItem } from '@/hooks/use-demo-state';
 
 type Message = {
   id: string;
@@ -34,15 +39,123 @@ type Message = {
     time: string;
     department: string;
   };
+  groundingSource?: {
+    type: 'file' | 'url' | 'text' | 'faq';
+    title: string;
+    source?: string;
+  };
 };
 
 interface BookingContext {
+  step?: 'idle' | 'asking_treatment' | 'asking_name' | 'asking_date' | 'asking_time' | 'asking_phone';
   patient_name?: string;
   phone_number?: string;
   department?: string;
   date?: string;
   time?: string;
-  step?: 'ask_name' | 'ask_dept' | 'ask_date' | 'ask_time' | 'ask_phone' | 'confirmed';
+  lastConcern?: string;
+}
+
+const STANDARD_CLINIC_SLOTS = [
+  "10:30 AM",
+  "11:30 AM",
+  "02:00 PM",
+  "03:30 PM",
+  "05:00 PM",
+  "06:30 PM"
+];
+
+function checkClinicSlotAvailability(dateStr: string, existingAppts: any[]) {
+  const booked = existingAppts
+    .filter(a => a.date === dateStr)
+    .map(a => a.time.toUpperCase().trim());
+
+  const available = STANDARD_CLINIC_SLOTS.filter(slot => 
+    !booked.some(b => b.includes(slot) || slot.includes(b))
+  );
+
+  return { available, booked };
+}
+
+function parseDateInput(input: string): string | null {
+  const lower = input.toLowerCase().trim();
+  const now = new Date();
+
+  if (lower.includes('today')) {
+    return now.toISOString().split('T')[0];
+  }
+  if (lower.includes('day after tomorrow')) {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return d.toISOString().split('T')[0];
+  }
+  if (lower.includes('tomorrow')) {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  }
+
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  for (let i = 0; i < days.length; i++) {
+    if (lower.includes(days[i])) {
+      const currentDay = now.getDay();
+      let diff = i - currentDay;
+      if (diff <= 0) diff += 7;
+      const target = new Date();
+      target.setDate(now.getDate() + diff);
+      return target.toISOString().split('T')[0];
+    }
+  }
+
+  const isoMatch = input.match(/\b\d{4}-\d{2}-\d{2}\b/);
+  if (isoMatch) return isoMatch[0];
+
+  const dateNumMatch = input.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i);
+  if (dateNumMatch) {
+    const day = parseInt(dateNumMatch[1], 10);
+    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const month = monthNames.indexOf(dateNumMatch[2].toLowerCase().slice(0, 3));
+    const year = now.getFullYear();
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().split('T')[0];
+    }
+  }
+
+  return null;
+}
+
+function parseTimeInput(input: string): string | null {
+  const clean = input.trim();
+  const lower = clean.toLowerCase();
+
+  if (lower.includes('10:30') || lower.includes('10.30')) return '10:30 AM';
+  if (lower.includes('11:30') || lower.includes('11.30')) return '11:30 AM';
+  if (lower.includes('2:00') || lower.includes('2.00') || lower.includes('02:00') || lower.includes('2 pm') || lower.includes('2pm') || lower.includes('2:00 pm')) return '02:00 PM';
+  if (lower.includes('3:30') || lower.includes('3.30') || lower.includes('03:30') || lower.includes('3:30 pm') || lower.includes('3.30 pm')) return '03:30 PM';
+  if (lower.includes('5:00') || lower.includes('5.00') || lower.includes('05:00') || lower.includes('5 pm') || lower.includes('5pm') || lower.includes('5:30') || lower.includes('5.30')) return '05:00 PM';
+  if (lower.includes('6:30') || lower.includes('6.30') || lower.includes('06:30') || lower.includes('6:30 pm') || lower.includes('7:00') || lower.includes('7 pm')) return '06:30 PM';
+
+  const timeMatch = clean.match(/(?:1[0-2]|0?[1-9]):[0-5][0-9]\s*(?:am|pm|AM|PM)?|\d{1,2}\s*(?:am|pm|AM|PM)/i);
+  if (timeMatch) {
+    let t = timeMatch[0].toUpperCase();
+    if (!t.includes('AM') && !t.includes('PM')) {
+      const hour = parseInt(t.split(':')[0], 10);
+      t = (hour >= 9 && hour <= 11) ? `${t} AM` : `${t} PM`;
+    }
+    return t;
+  }
+  return null;
+}
+
+function parsePhoneInput(input: string): string | null {
+  const digits = input.replace(/\D/g, '');
+  if (digits.length >= 10) {
+    if (digits.length === 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+    if (digits.length === 12 && digits.startsWith('91')) return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
+    return `+${digits}`;
+  }
+  return null;
 }
 
 interface ChatEmulatorProps {
@@ -52,30 +165,56 @@ interface ChatEmulatorProps {
   systemPrompt?: string;
 }
 
-export const initialSuggestions = [
-  { label: "📅 Book an Appointment", text: "I would like to book a doctor appointment" },
-  { label: "🕒 Check OPD Timings", text: "What are the hospital OPD consultation timings and emergency hours?" },
-  { label: "🚨 Emergency Triage Alert", text: "Emergency: Patient experiencing acute chest pain radiating to left arm" },
-];
-
 export default function ChatEmulator({ 
   onBookAppointment, 
   onRescheduleAppointment, 
   onExtractEntity,
-  systemPrompt 
+  systemPrompt = DEFAULT_LA_FLEUR_SYSTEM_PROMPT 
 }: ChatEmulatorProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    { 
-      id: 'm-1',
-      role: 'ai', 
-      content: "👋 Hello! Welcome to **Aivry Hospital** WhatsApp Reception.\n\nI am your 24/7 AI Health Assistant. How may I assist you today? You can book an appointment, check doctor timings, or ask any medical query.",
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const { appointments = [], knowledgeItems = [] } = useDemoState();
+  const isLaFleur = systemPrompt.includes("La Fleur") || systemPrompt.includes("LA FLEUR");
+  
+  // Extract or formulate bot persona title
+  const clinicTitle = isLaFleur 
+    ? "La Fleur Aesthetic Clinic" 
+    : systemPrompt.includes("Aivry") 
+    ? "Aivry Hospital" 
+    : "AI WhatsApp Assistant";
+
+  const getGreetingMessage = (): Message => {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (isLaFleur) {
+      return {
+        id: 'm-init',
+        role: 'ai',
+        content: `👋 Hello! Welcome to **La Fleur Aesthetic & Wellness Clinic**.\n\nI am your WhatsApp AI Clinic Assistant. I can help you explore relevant treatments for your skin, hair, or body concerns, check appointment availability, or schedule a doctor consultation.\n\nHow may I help you today?`,
+        time
+      };
+    } else {
+      return {
+        id: 'm-init',
+        role: 'ai',
+        content: `👋 Hello! Welcome to **${clinicTitle}** WhatsApp Reception.\n\nI am your 24/7 AI Assistant. How may I assist you today? You can book an appointment, check timings, or ask any question.`,
+        time
+      };
     }
-  ]);
+  };
+
+  const [messages, setMessages] = useState<Message[]>([getGreetingMessage()]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [context, setContext] = useState<BookingContext>({});
+  const [context, setContext] = useState<BookingContext>({ step: 'idle' });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Sync greeting if systemPrompt changes from dashboard
+  useEffect(() => {
+    setMessages(prev => {
+      if (prev.length <= 1) {
+        return [getGreetingMessage()];
+      }
+      return prev;
+    });
+  }, [systemPrompt]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -86,211 +225,472 @@ export default function ChatEmulator({
   }, [messages, isTyping]);
 
   const resetChat = () => {
-    setContext({});
-    setMessages([
-      { 
-        id: `m-${Date.now()}`,
-        role: 'ai', 
-        content: "👋 Hello! Welcome to **Aivry Hospital** WhatsApp Reception.\n\nI am your 24/7 AI Health Assistant. How may I assist you today? You can book an appointment, check doctor timings, or ask any medical query.",
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }
-    ]);
+    setContext({ step: 'idle' });
+    setMessages([getGreetingMessage()]);
   };
 
-  // Conversational Step-by-Step AI Dialog Engine
+  // ============================================================
+  // KNOWLEDGE BASE RETRIEVAL ENGINE (RAG)
+  // ============================================================
+  const searchKnowledge = (query: string, items: KnowledgeItem[]) => {
+    const q = query.toLowerCase().trim();
+    const stopWords = new Set(['what', 'when', 'where', 'which', 'about', 'your', 'have', 'with', 'from', 'this', 'that', 'they', 'tell', 'want', 'need', 'please', 'know', 'how', 'much', 'does', 'cost', 'like', 'there', 'give', 'book', 'booking', 'appointment', 'consultation']);
+    const qWords = q.split(/[^a-zA-Z0-9]+/).filter(w => w.length >= 3 && !stopWords.has(w));
+    
+    if (qWords.length === 0) return null;
+
+    let bestMatch: { item: KnowledgeItem; matchSnippet: string; score: number } | null = null;
+    const enabledDocs = items.filter(k => k.isEnabled);
+
+    for (const doc of enabledDocs) {
+      let docScore = 0;
+      const docTitleLower = doc.title.toLowerCase();
+      const docTags = doc.tags.map(t => t.toLowerCase());
+      const docUrlOrFile = (doc.sourceUrl || doc.fileName || '').toLowerCase();
+
+      for (const word of qWords) {
+        if (docTitleLower.includes(word)) docScore += 6;
+        if (docTags.some(t => t.includes(word))) docScore += 5;
+        if (docUrlOrFile.includes(word)) docScore += 4;
+      }
+
+      // Break content into coherent sections/paragraphs
+      const sections = doc.content.split(/\n\s*\n|\n(?=[0-9]+\.|\u2022|\*|•|[A-Z\s]{4,}:)/).filter(s => s.trim().length > 15);
+      let bestSection = '';
+      let bestSectionScore = 0;
+
+      for (const sec of sections) {
+        const secLower = sec.toLowerCase();
+        // Skip sections that look like template instructions or prompt examples
+        if (secLower.includes("trigger the treatment") || secLower.includes("system prompt") || secLower.includes("use the excel as the source")) {
+          continue;
+        }
+
+        let secScore = 0;
+        for (const word of qWords) {
+          if (secLower.includes(word)) {
+            secScore += 3;
+          }
+        }
+        if (secScore > bestSectionScore) {
+          bestSectionScore = secScore;
+          bestSection = sec.trim();
+        }
+      }
+
+      const totalDocScore = docScore + bestSectionScore;
+      if (totalDocScore >= 6 && (!bestMatch || totalDocScore > bestMatch.score)) {
+        bestMatch = {
+          item: doc,
+          matchSnippet: bestSection || doc.content.slice(0, 450),
+          score: totalDocScore
+        };
+      }
+    }
+
+    return bestMatch;
+  };
+
+  // Conversational AI Dialog Engine conforming to System Prompt + Knowledge Base
   const generateConversationalReply = (text: string, currentCtx: BookingContext) => {
     const raw = text.trim();
     const lower = raw.toLowerCase();
     const newCtx = { ...currentCtx };
 
-    // 1. Detect Emergency / Critical Symptoms
+    // ============================================================
+    // 1. SAFETY & MEDICAL ESCALATION (Sections 23, 24, 43)
+    // ============================================================
     if (
-      lower.includes('emergency') || 
-      lower.includes('chest pain') || 
-      lower.includes('heart attack') || 
-      lower.includes('breathless') || 
-      lower.includes('bleeding') || 
-      lower.includes('unconscious') ||
-      lower.includes('severe accident')
+      lower.includes('pregnant') || 
+      lower.includes('pregnancy') || 
+      lower.includes('breastfeeding') || 
+      lower.includes('lactating')
     ) {
       if (onExtractEntity) {
-        onExtractEntity({
-          intent: "emergency_triage",
-          entities: { symptom: raw, urgency: "CRITICAL_IMMEDIATE" },
-          triage_level: "CRITICAL_EMERGENCY",
-          confidence: 0.99
-        });
+        onExtractEntity({ intent: "medical_escalation", reason: "pregnancy_breastfeeding", confidence: 0.99 });
       }
       return {
-        content: `🚨 **EMERGENCY CASUALTY ALERT ACTIVATED**\n\nOur on-duty ER Medical Officer (Dr. Rajesh Gupta) and trauma team have been alerted.\n\n📍 **Casualty Desk Hotline:** +91 99999 00108\n🚑 **Ambulance Dispatch:** Available 24/7 at Gate 1\n\nPlease proceed directly to the Emergency Room (ER) immediately. A trauma nurse has been notified.`,
+        content: `That needs to be confirmed by the doctor before treatment. I don't want to give you an uncertain answer based only on chat.\n\nI'll flag this for the **La Fleur medical team** so they can advise you correctly. 👩‍⚕️\n\nWould you like me to schedule a direct consultation with our aesthetic physician?`,
         isAppointmentCard: false
       };
     }
 
-    // 2. Detect OPD / Timings Queries
-    if (lower.includes('timing') || lower.includes('opd') || lower.includes('hours') || lower.includes('when open') || lower.includes('schedule time')) {
+    if (
+      lower.includes('severe pain') || 
+      lower.includes('bleeding heavily') || 
+      lower.includes('burn') || 
+      lower.includes('severe reaction') || 
+      lower.includes('allergic reaction') || 
+      lower.includes('chest pain') || 
+      lower.includes('emergency')
+    ) {
       if (onExtractEntity) {
-        onExtractEntity({
-          intent: "check_opd_hours",
-          entities: { department: "All Departments" },
-          triage_level: "NORMAL",
-          confidence: 0.97
-        });
+        onExtractEntity({ intent: "emergency_handover", urgency: "HIGH", confidence: 0.99 });
       }
       return {
-        content: `🏥 **Aivry Hospital OPD Consultation Hours:**\n\n• **Morning OPD:** 09:00 AM – 01:00 PM\n• **Evening OPD:** 04:00 PM – 08:00 PM\n• **Emergency & Casualty:** Open 24/7 (All 365 Days)\n\nWould you like me to schedule an appointment for you? If yes, please share the **Patient's Full Name**.`,
-        isAppointmentCard: false
-      };
-    }
-
-    // 3. Extract Department if present in message
-    if (lower.includes('cardio') || lower.includes('heart')) {
-      newCtx.department = 'Cardiology';
-    } else if (lower.includes('pediatric') || lower.includes('child') || lower.includes('baby')) {
-      newCtx.department = 'Pediatrics';
-    } else if (lower.includes('ortho') || lower.includes('bone') || lower.includes('joint') || lower.includes('fracture')) {
-      newCtx.department = 'Orthopedics';
-    } else if (lower.includes('neuro') || lower.includes('brain') || lower.includes('headache')) {
-      newCtx.department = 'Neurology';
-    } else if (lower.includes('derma') || lower.includes('skin') || lower.includes('rash')) {
-      newCtx.department = 'Dermatology';
-    } else if (lower.includes('ent') || lower.includes('ear') || lower.includes('throat')) {
-      newCtx.department = 'ENT';
-    } else if (lower.includes('general') || lower.includes('fever') || lower.includes('cough') || lower.includes('cold') || lower.includes('physician') || lower.includes('checkup')) {
-      newCtx.department = 'General Medicine';
-    }
-
-    // 4. Extract Date if present
-    if (lower.includes('tomorrow')) {
-      const d = new Date();
-      d.setDate(d.getDate() + 1);
-      newCtx.date = d.toISOString().split('T')[0];
-    } else if (lower.includes('today')) {
-      newCtx.date = new Date().toISOString().split('T')[0];
-    } else {
-      const dateMatch = raw.match(/\d{4}-\d{2}-\d{2}/);
-      if (dateMatch) {
-        newCtx.date = dateMatch[0];
-      } else if (lower.includes('monday') || lower.includes('tuesday') || lower.includes('wednesday') || lower.includes('thursday') || lower.includes('friday') || lower.includes('saturday') || lower.includes('sunday')) {
-        const d = new Date();
-        d.setDate(d.getDate() + 2);
-        newCtx.date = d.toISOString().split('T')[0];
-      }
-    }
-
-    // 5. Extract Time if present
-    const timeMatch = raw.match(/(?:1[0-2]|0?[1-9]):[0-5][0-9]\s*(?:am|pm|AM|PM)?|\d{1,2}\s*(?:am|pm|AM|PM)/i);
-    if (timeMatch) {
-      newCtx.time = timeMatch[0].toUpperCase();
-    } else if (lower.includes('morning')) {
-      newCtx.time = '10:30 AM';
-    } else if (lower.includes('evening') || lower.includes('afternoon')) {
-      newCtx.time = '04:30 PM';
-    }
-
-    // 6. Extract Phone Number if present
-    const phoneMatch = raw.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\d{10}/);
-    if (phoneMatch) {
-      newCtx.phone_number = phoneMatch[0];
-    }
-
-    // 7. Extract Name
-    // Check if user says "my name is X" or "for X"
-    const nameMatch = raw.match(/(?:my name is|i am|name is|patient is|patient name is|for)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
-    if (nameMatch) {
-      newCtx.patient_name = nameMatch[1];
-    } else if (!newCtx.patient_name && !phoneMatch && !timeMatch && !newCtx.department && !newCtx.date) {
-      // If user typed just their name (e.g. "Arbaz" or "Arbaz Khan" or "Rahul Sharma")
-      if (!lower.includes('book') && !lower.includes('appointment') && !lower.includes('hello') && !lower.includes('hi') && !lower.includes('hey')) {
-        const clean = raw.replace(/[^a-zA-Z\s]/g, '').trim();
-        if (clean.length >= 2 && !['yes', 'no', 'ok', 'okay', 'sure', 'thanks', 'thank you'].includes(clean.toLowerCase())) {
-          newCtx.patient_name = clean.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        }
-      }
-    }
-
-    // Update state context
-    setContext(newCtx);
-
-    // ============================================================
-    // STEP-BY-STEP CONVERSATIONAL FLOW
-    // ============================================================
-
-    // Step A: If Patient Name is not yet provided
-    if (!newCtx.patient_name) {
-      return {
-        content: `👋 Hello! I would be happy to help you schedule a doctor consultation at **Aivry Hospital**.\n\nMay I please have the **Patient's Full Name**?`,
-        isAppointmentCard: false
-      };
-    }
-
-    // Step B: If Department / Doctor is not yet provided
-    if (!newCtx.department) {
-      return {
-        content: `Nice to meet you, **${newCtx.patient_name}**! 👋\n\nWhich department or specialist would you like to consult with?\n\n• **Cardiology** (Heart / Chest - Dr. Rajesh Gupta)\n• **Pediatrics** (Child Health - Dr. Shalini Roy)\n• **Orthopedics** (Bones & Joints - Dr. Vivek Menon)\n• **General Medicine** (Fever / General Checkup - Dr. Ananya Rao)\n• **Neurology / ENT / Dermatology**\n\nPlease reply with your preferred department or symptoms.`,
-        isAppointmentCard: false
-      };
-    }
-
-    // Step C: If Date is not yet provided
-    if (!newCtx.date) {
-      const doc = newCtx.department === 'Pediatrics' ? 'Dr. Shalini Roy' : newCtx.department === 'Orthopedics' ? 'Dr. Vivek Menon' : 'Dr. Rajesh Gupta';
-      return {
-        content: `Got it, **${newCtx.department}** with **${doc}** for **${newCtx.patient_name}**.\n\nWhat **date** would you prefer for your visit? (e.g., *Tomorrow*, *Today*, or *YYYY-MM-DD*)`,
-        isAppointmentCard: false
-      };
-    }
-
-    // Step D: If Time slot is not yet provided
-    if (!newCtx.time) {
-      return {
-        content: `Great! We have consultation slots available on **${newCtx.date}**:\n\n• **Morning Slots:** 09:30 AM, 10:30 AM, 11:45 AM\n• **Evening Slots:** 04:30 PM, 06:00 PM\n\nWhat **time slot** works best for you?`,
-        isAppointmentCard: false
-      };
-    }
-
-    // Step E: If Phone number is not yet provided
-    if (!newCtx.phone_number) {
-      return {
-        content: `Almost done! What is your **WhatsApp Contact Phone Number** so we can send your digital appointment pass? (e.g. *+91 98765 43210*)`,
+        content: `🚨 **Medical Attention Advised**\n\nIf you are experiencing severe symptoms or an acute adverse reaction, please seek immediate in-person medical care or visit the nearest emergency facility.\n\nI have also flagged your conversation for immediate priority review by the La Fleur clinic coordinator.`,
         isAppointmentCard: false
       };
     }
 
     // ============================================================
-    // Step F: ALL DETAILS COLLECTED -> CONFIRM AND STORE APPOINTMENT!
+    // 2. CHECK IF USER IS CURRENTLY IN AN ACTIVE STEP-BY-STEP BOOKING FLOW
     // ============================================================
-    const docName = newCtx.department === 'Pediatrics' ? 'Dr. Shalini Roy' : newCtx.department === 'Orthopedics' ? 'Dr. Vivek Menon' : 'Dr. Rajesh Gupta';
     
-    const apptData = {
-      patient_name: newCtx.patient_name,
-      phone_number: newCtx.phone_number,
-      date: newCtx.date,
-      time: newCtx.time,
-      department: newCtx.department
-    };
+    // Step A: Currently waiting for PATIENT NAME
+    if (newCtx.step === 'asking_name') {
+      const parsedPhone = parsePhoneInput(raw);
+      const parsedDate = parseDateInput(raw);
+      const parsedTime = parseTimeInput(raw);
 
-    // Save to database & dashboard state
-    if (onBookAppointment) {
-      onBookAppointment(apptData);
+      // If user typed a pure name
+      if (!parsedPhone && !parsedDate && !parsedTime && raw.length >= 2) {
+        const cleanName = raw.replace(/^(my name is|i am|this is)\s+/i, '').trim();
+        newCtx.patient_name = cleanName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        newCtx.step = 'asking_date';
+        setContext(newCtx);
+
+        return {
+          content: `Thank you, **${newCtx.patient_name}**! 😊\n\nWhich **date** would you like to visit our clinic for your **${newCtx.department || 'Consultation'}**?\n\n(You can say *Tomorrow*, *Saturday*, or a specific date like *2026-09-06*)`,
+          isAppointmentCard: false
+        };
+      }
     }
 
-    if (onExtractEntity) {
-      onExtractEntity({
-        intent: "book_appointment",
-        entities: apptData,
-        triage_level: "NORMAL",
-        confidence: 0.99
-      });
+    // Step B: Currently waiting for APPOINTMENT DATE
+    if (newCtx.step === 'asking_date') {
+      const extractedDate = parseDateInput(raw);
+      if (extractedDate) {
+        newCtx.date = extractedDate;
+        
+        // CHECK LIVE CLINIC AVAILABILITY FOR THIS DATE!
+        const { available, booked } = checkClinicSlotAvailability(extractedDate, appointments);
+
+        if (available.length === 0) {
+          return {
+            content: `📅 We checked the clinic calendar for **${extractedDate}**.\n\n⚠️ Unfortunately, all consultation slots on **${extractedDate}** are **fully booked**.\n\nWould you like to check available slots for **Tomorrow** or another date?`,
+            isAppointmentCard: false
+          };
+        }
+
+        newCtx.step = 'asking_time';
+        setContext(newCtx);
+
+        return {
+          content: `📅 **Clinic Availability Checked for ${extractedDate}** 🗓️\n\nHere are the **available open time slots**:\n${available.map(s => `• 🟢 **${s}**`).join('\n')}\n\nWhich time slot would you like to reserve?`,
+          isAppointmentCard: false
+        };
+      } else {
+        return {
+          content: `Please specify a preferred date for your appointment (e.g. *Tomorrow*, *Saturday*, or *2026-09-05*), and I will check slot availability for you.`,
+          isAppointmentCard: false
+        };
+      }
     }
 
-    // Reset context for subsequent bookings
-    setContext({});
+    // Step C: Currently waiting for TIME SLOT
+    if (newCtx.step === 'asking_time' && newCtx.date) {
+      const extractedTime = parseTimeInput(raw);
+      if (extractedTime) {
+        const { available, booked } = checkClinicSlotAvailability(newCtx.date, appointments);
+        
+        const isSlotAvailable = available.some(s => s.toUpperCase() === extractedTime.toUpperCase() || extractedTime.toUpperCase().includes(s.toUpperCase()));
 
+        if (!isSlotAvailable) {
+          return {
+            content: `⚠️ Sorry, **${extractedTime}** is already booked on **${newCtx.date}**.\n\nPlease select from the remaining open slots:\n${available.map(s => `• 🟢 **${s}**`).join('\n')}\n\nWhich of these open slots would you prefer?`,
+            isAppointmentCard: false
+          };
+        }
+
+        newCtx.time = extractedTime;
+        newCtx.step = 'asking_phone';
+        setContext(newCtx);
+
+        return {
+          content: `✅ Perfect! **${extractedTime}** on **${newCtx.date}** is open and reserved for you.\n\nLastly, what is your **WhatsApp Phone Number** so we can send your appointment pass and pre-care instructions? (e.g. *+91 98765 43210*)`,
+          isAppointmentCard: false
+        };
+      } else {
+        const { available } = checkClinicSlotAvailability(newCtx.date, appointments);
+        return {
+          content: `Please pick one of the available open slots for **${newCtx.date}**:\n${available.map(s => `• 🟢 **${s}**`).join('\n')}`,
+          isAppointmentCard: false
+        };
+      }
+    }
+
+    // Step D: Currently waiting for WHATSAPP PHONE NUMBER
+    if (newCtx.step === 'asking_phone') {
+      const extractedPhone = parsePhoneInput(raw);
+      if (extractedPhone) {
+        newCtx.phone_number = extractedPhone;
+
+        // VERIFY ALL 4 MANDATORY FIELDS ARE COMPLETE & VALID
+        const patientName = newCtx.patient_name || 'Patient';
+        const phoneNumber = extractedPhone;
+        const apptDate = newCtx.date || new Date().toISOString().split('T')[0];
+        const apptTime = newCtx.time || '11:30 AM';
+        const department = newCtx.department || 'Aesthetic Consultation';
+
+        // ALL 5 MANDATORY FIELDS VALIDATED -> COMPLETE BOOKING!
+        const docName = department.includes("Hair") 
+          ? "Dr. Shalini Roy (Trichologist)" 
+          : department.includes("Pigment") || department.includes("Peel") 
+          ? "Dr. Meera Kapoor (Cosmetic Dermatologist)" 
+          : "Dr. Ananya Sharma (Senior Aesthetic Physician)";
+
+        const apptData = {
+          patient_name: patientName,
+          phone_number: phoneNumber,
+          date: apptDate,
+          time: apptTime,
+          department: department
+        };
+
+        if (onBookAppointment) {
+          onBookAppointment(apptData);
+        }
+
+        if (onExtractEntity) {
+          onExtractEntity({
+            intent: "book_appointment",
+            entities: apptData,
+            confidence: 0.99
+          });
+        }
+
+        // Reset context to idle
+        setContext({ step: 'idle' });
+
+        return {
+          content: `🎉 **Appointment Confirmed!** ✅\n\nYour consultation has been booked in the La Fleur Clinic system.\n\n📋 **Patient:** ${apptData.patient_name}\n🌸 **Treatment:** ${apptData.department}\n📅 **Date:** ${apptData.date}\n🕒 **Time:** ${apptData.time}\n👩‍⚕️ **Doctor:** ${docName}\n📍 **Location:** Suite 402, Lotus Grandeur, Jubilee Hills\n📱 **WhatsApp Sync:** ${apptData.phone_number}\n\nWe will send you a reminder 24 hours prior along with your treatment pre-care instructions. 😊`,
+          isAppointmentCard: true,
+          appointmentData: apptData
+        };
+      } else {
+        return {
+          content: `Please provide a valid 10-digit WhatsApp phone number (e.g. *+91 98765 43210*) so we can send your digital booking pass.`,
+          isAppointmentCard: false
+        };
+      }
+    }
+
+    // ============================================================
+    // 3. INTENT: USER WANTS TO BOOK AN APPOINTMENT (INITIATE FLOW)
+    // ============================================================
+    const isDirectBookingIntent = 
+      lower.includes('book') || 
+      lower.includes('appointment') || 
+      lower.includes('consultation') || 
+      lower.includes('schedule') || 
+      lower.includes('reserve slot') ||
+      lower.includes('check slot') ||
+      lower.includes('availability');
+
+    if (isDirectBookingIntent) {
+      // Check if user already mentioned a treatment
+      let targetDept = newCtx.department;
+      if (lower.includes('laser')) targetDept = 'Laser Hair Reduction';
+      else if (lower.includes('prp') || lower.includes('hair')) targetDept = 'PRP Hair Therapy';
+      else if (lower.includes('pigment') || lower.includes('peel')) targetDept = 'Pigmentation & Peels';
+      else if (lower.includes('botox') || lower.includes('anti-aging')) targetDept = 'Anti-Aging & Botox';
+      else if (lower.includes('glow') || lower.includes('facial')) targetDept = 'HydraFacial Deluxe';
+
+      if (!targetDept) {
+        newCtx.step = 'asking_treatment';
+        setContext(newCtx);
+        return {
+          content: `I would be happy to help you book a consultation at **La Fleur Aesthetic & Wellness Clinic**! 🌸\n\nWhich treatment or clinical concern would you like to consult for?\n\n• **1. Laser Hair Reduction**\n• **2. PRP & Hair Restoration**\n• **3. Pigmentation & Chemical Peels**\n• **4. Anti-Aging & Skin Tightening**\n• **5. General Aesthetic Consultation**\n\nPlease reply with your preferred treatment.`,
+          isAppointmentCard: false
+        };
+      } else {
+        newCtx.department = targetDept;
+        newCtx.step = 'asking_name';
+        setContext(newCtx);
+        return {
+          content: `Great! Let's get you scheduled for **${targetDept}**.\n\nTo ensure our doctor is prepared for your visit, all appointments require mandatory registry details.\n\nMay I please have your **Full Name**?`,
+          isAppointmentCard: false
+        };
+      }
+    }
+
+    // If waiting for treatment selection
+    if (newCtx.step === 'asking_treatment') {
+      let dept = 'Aesthetic Consultation';
+      if (lower.includes('1') || lower.includes('laser')) dept = 'Laser Hair Reduction';
+      else if (lower.includes('2') || lower.includes('prp') || lower.includes('hair')) dept = 'PRP Hair Therapy';
+      else if (lower.includes('3') || lower.includes('pigment') || lower.includes('peel')) dept = 'Pigmentation & Peels';
+      else if (lower.includes('4') || lower.includes('aging') || lower.includes('botox')) dept = 'Anti-Aging & Botox';
+      else if (lower.includes('5') || lower.includes('general')) dept = 'General Aesthetic Consultation';
+      else dept = raw;
+
+      newCtx.department = dept;
+      newCtx.step = 'asking_name';
+      setContext(newCtx);
+
+      return {
+        content: `Got it: **${dept}**.\n\nMay I please have your **Full Name** for the appointment registry?`,
+        isAppointmentCard: false
+      };
+    }
+
+    // ============================================================
+    // 4. KNOWLEDGE BASE SEARCH CHECK (RAG GROUNDING FOR INQUIRIES)
+    // ============================================================
+    const kbMatch = searchKnowledge(raw, knowledgeItems);
+    if (kbMatch && kbMatch.score >= 6) {
+      return {
+        content: `${kbMatch.matchSnippet}\n\nWould you like me to check doctor availability or help you book a consultation?`,
+        isAppointmentCard: false,
+        groundingSource: {
+          type: kbMatch.item.type,
+          title: kbMatch.item.title,
+          source: kbMatch.item.sourceUrl || kbMatch.item.fileName || kbMatch.item.title
+        }
+      };
+    }
+
+    // ============================================================
+    // 5. PRE-CARE & POST-CARE INQUIRIES
+    // ============================================================
+    if (
+      lower.includes('pre-care') || 
+      lower.includes('before my appointment') || 
+      lower.includes('before treatment') || 
+      lower.includes('before laser') ||
+      lower.includes('prepare for') ||
+      lower.includes('preparation')
+    ) {
+      return {
+        content: `A quick note before your appointment 👋\n\nHere are the recommended pre-care instructions:\n\n* **Sun Protection:** Avoid active sun tanning, tanning beds, or sunless tanners for 1–2 weeks before.\n* **Daily SPF:** Use a broad-spectrum SPF 50+ sunscreen regularly.\n* **Shaving:** For laser treatments, shave the treatment area 24 hours prior (do not wax, thread, or pluck).\n* **Active Skincare:** Pause strong actives like Retinol, AHA/BHA peels 3–5 days prior.\n* **Medical History:** Please inform the clinic of any recent medications or skin conditions.\n\nWould you like to book or check your appointment details?`,
+        isAppointmentCard: false
+      };
+    }
+
+    if (
+      lower.includes('post-care') || 
+      lower.includes('after care') || 
+      lower.includes('after treatment') || 
+      lower.includes('after my sitting') || 
+      lower.includes('had the treatment yesterday') ||
+      lower.includes('what to do after')
+    ) {
+      return {
+        content: `Hope your treatment went well! 💙\n\nA few essential after-care reminders:\n\n* **Soothing & Hydration:** Apply the clinic-recommended soothing gel or gentle moisturizer.\n* **Avoid Heat:** Avoid hot showers, steam rooms, saunas, and strenuous workouts for 24–48 hours.\n* **Sun Protection:** Diligently apply broad-spectrum sunscreen every 3–4 hours when outdoors.\n* **Gentle Care:** Do not scratch, pick, or scrub the treated skin.\n\nIf you have any unexpected redness or queries, I can connect you directly with the La Fleur team.`,
+        isAppointmentCard: false
+      };
+    }
+
+    // Multi-Sitting & intervals
+    if (
+      lower.includes('how many sessions') || 
+      lower.includes('how many sittings') || 
+      lower.includes('next sitting') || 
+      lower.includes('sitting interval') || 
+      lower.includes('how long between')
+    ) {
+      return {
+        content: `For treatments like **Laser Hair Reduction** or **PRP/GFC Hair Therapy**, a typical course involves multiple sittings because hair and skin renewal follow biological growth cycles.\n\n• **Sitting Interval:** Typically spaced **4–6 weeks apart**.\n• **Treatment Plan:** The exact number of sessions (usually 6–8 for laser, 4–6 for PRP) depends on individual assessment and clinical response.\n\nWould you like me to check available consultation slots for you?`,
+        isAppointmentCard: false
+      };
+    }
+
+    // Pricing & Quotes
+    if (
+      lower.includes('price') || 
+      lower.includes('cost') || 
+      lower.includes('how much') || 
+      lower.includes('discount') || 
+      lower.includes('package rate')
+    ) {
+      return {
+        content: `Prices for La Fleur treatments start from indicative rates (e.g. Laser Hair Reduction from ₹2,499/session, PRP Hair Therapy from ₹4,500/session, HydraFacial Deluxe from ₹3,999). Final pricing and package discounts depend on your customized treatment plan and will be confirmed during your doctor consultation.\n\nWould you like to check doctor availability for a consultation?`,
+        isAppointmentCard: false
+      };
+    }
+
+    // ============================================================
+    // 6. TREATMENT DISCOVERY BY CONCERN
+    // ============================================================
+    
+    // Pigmentation
+    if (
+      lower.includes('pigment') || 
+      lower.includes('dark spot') || 
+      lower.includes('melasma') || 
+      lower.includes('tan') || 
+      lower.includes('dull') || 
+      lower.includes('uneven') || 
+      lower.includes('blemish') ||
+      lower.includes('acne mark')
+    ) {
+      newCtx.department = 'Pigmentation & Skin Peels';
+      setContext(newCtx);
+      return {
+        content: `For pigmentation and uneven skin tone, La Fleur offers specialized clinical treatments:\n\n1. **Advanced Chemical Peels** — for resurfacing and reducing hyperpigmentation.\n2. **Laser Toning (Q-Switched Nd:YAG)** — for deep pigment targeting.\n3. **Hydra-Brightening Medi-Facial** — for immediate hydration and cellular glow.\n\nWould you like to schedule a doctor consultation to examine your skin and check available dates?`,
+        isAppointmentCard: false
+      };
+    }
+
+    // Hair Loss
+    if (
+      lower.includes('hair loss') || 
+      lower.includes('hair fall') || 
+      lower.includes('losing hair') || 
+      lower.includes('thinning') || 
+      lower.includes('prp') || 
+      lower.includes('gfc') || 
+      lower.includes('hair transplant') ||
+      lower.includes('bald')
+    ) {
+      newCtx.department = 'PRP Hair Therapy';
+      setContext(newCtx);
+      return {
+        content: `For hair thinning and hair fall, La Fleur provides restorative therapies:\n\n1. **PRP Hair Therapy** — Platelet-Rich Plasma to stimulate dormant hair follicles.\n2. **GFC Therapy** — Concentrated growth factors for accelerated hair regrowth.\n3. **Hair Transplant Assessment** — For advanced thinning.\n\nWould you like me to check doctor availability for a hair assessment consultation?`,
+        isAppointmentCard: false
+      };
+    }
+
+    // Laser Hair Reduction
+    if (
+      lower.includes('laser hair') || 
+      lower.includes('unwanted hair') || 
+      lower.includes('facial hair') || 
+      lower.includes('body hair') || 
+      lower.includes('bikini hair') ||
+      lower.includes('underarm')
+    ) {
+      newCtx.department = 'Laser Hair Reduction';
+      setContext(newCtx);
+      return {
+        content: `**Laser Hair Reduction** at La Fleur uses medical-grade cooling laser technology to safely reduce unwanted hair across face and body areas.\n\n• **Course of Treatment:** 6–8 sittings spaced 4–6 weeks apart.\n• **Safety:** Painless cooling tip suitable for all Indian skin types.\n\nWould you like to schedule an initial consultation or check available appointment slots?`,
+        isAppointmentCard: false
+      };
+    }
+
+    // Anti-Aging
+    if (
+      lower.includes('wrinkle') || 
+      lower.includes('aging') || 
+      lower.includes('tighten') || 
+      lower.includes('sagging') || 
+      lower.includes('botox') || 
+      lower.includes('fine line') ||
+      lower.includes('anti-aging')
+    ) {
+      newCtx.department = 'Anti-Aging & Skin Tightening';
+      setContext(newCtx);
+      return {
+        content: `For skin tightening and expression lines, La Fleur provides:\n\n1. **RF Skin Tightening** — Stimulates deep collagen for firmer skin.\n2. **Botox / Botulinum Toxin** — Softens dynamic forehead and frown lines.\n3. **Microneedling RF (MNRF)** — Refines skin texture and pore elasticity.\n\nWould you like to check available consultation slots?`,
+        isAppointmentCard: false
+      };
+    }
+
+    // Default Fallback
     return {
-      content: `✅ **Appointment Successfully Booked!**\n\nThank you, **${apptData.patient_name}**. Your consultation is confirmed with **${docName}** (${apptData.department}).\n\n📅 **Date:** ${apptData.date}\n🕒 **Time Slot:** ${apptData.time}\n📍 **Location:** OPD Block A, Room 204\n📱 **WhatsApp Sync:** ${apptData.phone_number}\n\nYour appointment has been registered in the hospital schedule dashboard.`,
-      isAppointmentCard: true,
-      appointmentData: apptData
+      content: `I am here to help! You can ask about our treatments (Laser Hair Reduction, PRP, Chemical Peels, HydraFacials), check clinic timings, or type **"Book Appointment"** to check live slot availability. How can I assist you?`,
+      isAppointmentCard: false
     };
   };
 
@@ -312,7 +712,7 @@ export default function ChatEmulator({
     setInputValue('');
     setIsTyping(true);
 
-    // Realistic human response delay
+    // Natural assistant delay
     setTimeout(() => {
       const resp = generateConversationalReply(textToSend, context);
       const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -323,7 +723,8 @@ export default function ChatEmulator({
         content: resp.content,
         time: aiTime,
         isAppointmentCard: resp.isAppointmentCard,
-        appointmentData: resp.appointmentData
+        appointmentData: resp.appointmentData,
+        groundingSource: resp.groundingSource
       }]);
       setIsTyping(false);
     }, 450);
@@ -353,16 +754,16 @@ export default function ChatEmulator({
             <ArrowLeft className="h-4 w-4 cursor-pointer hover:opacity-80" />
             <div className="relative">
               <div className="h-8 w-8 rounded-full bg-white text-[#008069] flex items-center justify-center font-bold text-xs shadow-xs">
-                <Bot className="h-5 w-5 text-[#008069]" />
+                {isLaFleur ? "🌸" : <Bot className="h-5 w-5 text-[#008069]" />}
               </div>
               <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-1.5 ring-white" />
             </div>
             <div>
               <div className="flex items-center gap-1">
-                <span className="font-bold text-xs tracking-tight text-white">Aivry Hospital AI</span>
+                <span className="font-bold text-xs tracking-tight text-white">{clinicTitle}</span>
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-200 fill-emerald-300 text-white" />
               </div>
-              <p className="text-[9.5px] text-emerald-100/90 font-medium">Official Business Account</p>
+              <p className="text-[9.5px] text-emerald-100/90 font-medium">Official Verified Business Account</p>
             </div>
           </div>
 
@@ -395,49 +796,70 @@ export default function ChatEmulator({
               <div className="wa-bubble-content">
                 <p className="whitespace-pre-line leading-relaxed">{msg.content}</p>
 
+                {/* Grounding Source Badge if Answer retrieved from Knowledge Base */}
+                {msg.groundingSource && (
+                  <div className="mt-2 pt-1.5 border-t border-border/40 flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
+                    <span className="text-primary font-semibold flex items-center gap-0.5">
+                      {msg.groundingSource.type === 'file' ? <FileText className="h-2.5 w-2.5" /> : <Globe className="h-2.5 w-2.5" />}
+                      Source:
+                    </span>
+                    <span className="truncate max-w-[200px]" title={msg.groundingSource.source}>
+                      {msg.groundingSource.source}
+                    </span>
+                  </div>
+                )}
+
                 {/* Rich Appointment Confirmation Card inside WhatsApp */}
                 {msg.isAppointmentCard && msg.appointmentData && (
                   <div className="mt-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 space-y-1.5 text-xs text-foreground">
                     <div className="flex items-center justify-between font-bold text-emerald-700 dark:text-emerald-300">
                       <span className="flex items-center gap-1">
-                        <Calendar className="h-3.5 w-3.5" /> Booking Confirmation
+                        <Calendar className="h-3.5 w-3.5" /> La Fleur Booking Pass
                       </span>
                       <span className="text-[10px] font-mono uppercase bg-emerald-500/20 px-1.5 py-0.5 rounded text-emerald-700 dark:text-emerald-300">Confirmed</span>
                     </div>
                     <div className="space-y-0.5 text-[11px] text-muted-foreground pt-1 border-t border-emerald-500/20">
                       <p><strong className="text-foreground">Patient:</strong> {msg.appointmentData.patient_name}</p>
-                      <p><strong className="text-foreground">Specialty:</strong> {msg.appointmentData.department}</p>
+                      <p><strong className="text-foreground">Treatment:</strong> {msg.appointmentData.department}</p>
                       <p><strong className="text-foreground">Date & Slot:</strong> {msg.appointmentData.date} at {msg.appointmentData.time}</p>
                       <p><strong className="text-foreground">Phone:</strong> {msg.appointmentData.phone_number}</p>
                     </div>
                   </div>
                 )}
 
-                {/* In-Message Interactive Action Chips */}
-                {msg.id === 'm-1' && (
+                {/* In-Message Interactive Action Chips on First Message */}
+                {(msg.id === 'm-init' || msg.id === 'm-1') && (
                   <div className="mt-2.5 pt-2 border-t border-border/40 flex flex-col gap-1.5">
                     <button
                       type="button"
-                      onClick={() => handleSendMessage(undefined, "I want to book an appointment")}
+                      onClick={() => handleSendMessage(undefined, "What are the prices for Laser Hair Removal and PRP?")}
                       className="text-left text-[11px] px-2.5 py-1.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-medium transition-colors flex items-center justify-between"
                     >
-                      <span>📅 Book Doctor Appointment</span>
+                      <span>📑 Check Treatments & Pricing Guide</span>
                       <span className="text-[10px] opacity-70">Tap →</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleSendMessage(undefined, "What are the hospital OPD consultation timings and casualty hours?")}
+                      onClick={() => handleSendMessage(undefined, "Who are the doctors at La Fleur and what are clinic timings?")}
                       className="text-left text-[11px] px-2.5 py-1.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-700 dark:text-sky-300 font-medium transition-colors flex items-center justify-between"
                     >
-                      <span>🕒 Check OPD Consultation Timings</span>
+                      <span>🌐 Check Doctors & Clinic Hours (Website)</span>
                       <span className="text-[10px] opacity-70">Tap →</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleSendMessage(undefined, "Emergency: Severe chest pain and breathlessness")}
-                      className="text-left text-[11px] px-2.5 py-1.5 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 font-medium transition-colors flex items-center justify-between"
+                      onClick={() => handleSendMessage(undefined, "What are the pre-care instructions before laser treatment?")}
+                      className="text-left text-[11px] px-2.5 py-1.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-medium transition-colors flex items-center justify-between"
                     >
-                      <span>🚨 Emergency Casualty Assistance</span>
+                      <span>⚡ Pre-Care & Post-Care Instructions</span>
+                      <span className="text-[10px] opacity-70">Tap →</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSendMessage(undefined, "I want to book a doctor consultation.")}
+                      className="text-left text-[11px] px-2.5 py-1.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-medium transition-colors flex items-center justify-between"
+                    >
+                      <span>📅 Book Doctor Consultation</span>
                       <span className="text-[10px] opacity-70">Tap →</span>
                     </button>
                   </div>
@@ -477,7 +899,7 @@ export default function ChatEmulator({
           </button>
           <input 
             type="text" 
-            placeholder="Type a message or reply..." 
+            placeholder="Ask anything about clinic treatments, doctors, pricing..." 
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             className="flex-1 rounded-full border-none bg-white dark:bg-[#2a3942] px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground shadow-xs outline-none focus:ring-1 focus:ring-[#008069]"
@@ -497,3 +919,5 @@ export default function ChatEmulator({
     </div>
   );
 }
+
+

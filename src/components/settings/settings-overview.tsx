@@ -212,6 +212,16 @@ export function SettingsOverview({
       loading: false,
       subtitle: t('appearance', { mode: cap(mode), theme: themeName }),
     },
+    {
+      section: 'ai',
+      loading: false,
+      subtitle: 'System Prompt & Clinical Safeguards',
+    },
+    {
+      section: 'knowledge',
+      loading: false,
+      subtitle: 'Document RAG & Website Ingestion',
+    },
   ];
 
   return (

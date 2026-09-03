@@ -17,7 +17,8 @@ import {
   LifeBuoy,
   MessageSquareText,
   Activity,
-  ShieldCheck
+  ShieldCheck,
+  BookOpen
 } from "lucide-react";
 
 interface NavGroup {
@@ -39,6 +40,7 @@ const navigationGroups: NavGroup[] = [
       { href: "/contacts", label: "Patients", icon: Users },
       { href: "/appointments", label: "Appointments", icon: Calendar },
       { href: "/demo", label: "AI Receptionist", icon: Bot, badge: "Live", badgeColor: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
+      { href: "/settings?tab=knowledge", label: "Knowledge Base", icon: BookOpen, badge: "RAG", badgeColor: "bg-primary/15 text-primary" },
       { href: "/follow-ups", label: "Follow-Ups", icon: RefreshCcw },
     ]
   },
@@ -86,10 +88,10 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           )}
           <div className="flex flex-col">
             <span className="text-sm font-bold text-foreground leading-tight tracking-tight flex items-center gap-1.5">
-              Aivry Health
+              {appName && appName !== "Aivry CRM" ? appName : "La Fleur Clinic"}
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
             </span>
-            <span className="text-[11px] text-muted-foreground font-medium">WhatsApp Hospital CRM</span>
+            <span className="text-[11px] text-muted-foreground font-medium">WhatsApp AI Assistant</span>
           </div>
         </Link>
       </div>

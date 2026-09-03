@@ -1528,7 +1528,8 @@
       "deals": "Deals & currency",
       "members": "Team members",
       "api": "API keys",
-      "ai": "AI Assistant"
+      "ai": "AI Assistant",
+      "knowledge": "Knowledge Base"
     },
     "groups": {
       "account": "Account",

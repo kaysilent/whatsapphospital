@@ -18,6 +18,7 @@ import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel'
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import { AiAgentPanel } from '@/components/settings/ai-agent-panel';
+import { KnowledgeBasePanel } from '@/components/settings/knowledge-base-panel';
 import {
   resolveSection,
   type SettingsSection,
@@ -81,6 +82,7 @@ function SettingsPageInner() {
     members: <MembersTab />,
     api: <ApiKeysSettings />,
     ai: <AiAgentPanel />,
+    knowledge: <KnowledgeBasePanel />,
   };
 
   return (
