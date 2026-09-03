@@ -42,6 +42,7 @@ interface BookingContext {
   department?: string;
   date?: string;
   time?: string;
+  step?: 'ask_name' | 'ask_dept' | 'ask_date' | 'ask_time' | 'ask_phone' | 'confirmed';
 }
 
 interface ChatEmulatorProps {
@@ -52,8 +53,7 @@ interface ChatEmulatorProps {
 }
 
 export const initialSuggestions = [
-  { label: "📅 Book Dr. Gupta (Cardiology)", text: "Book an appointment for Arbaz Khan tomorrow 10:30 AM in Cardiology" },
-  { label: "👶 Book Pediatrics Checkup", text: "Book appointment for baby Priya (+91 98123 45678) tomorrow 11:15 AM in Pediatrics" },
+  { label: "📅 Book an Appointment", text: "I would like to book a doctor appointment" },
   { label: "🕒 Check OPD Timings", text: "What are the hospital OPD consultation timings and emergency hours?" },
   { label: "🚨 Emergency Triage Alert", text: "Emergency: Patient experiencing acute chest pain radiating to left arm" },
 ];
@@ -97,7 +97,7 @@ export default function ChatEmulator({
     ]);
   };
 
-  // Conversational Natural AI Dialog Engine (Multi-Turn Human Receptionist)
+  // Conversational Step-by-Step AI Dialog Engine
   const generateConversationalReply = (text: string, currentCtx: BookingContext) => {
     const raw = text.trim();
     const lower = raw.toLowerCase();
@@ -138,18 +138,12 @@ export default function ChatEmulator({
         });
       }
       return {
-        content: `🏥 **Aivry Hospital OPD Consultation Hours:**\n\n• **Morning OPD:** 09:00 AM – 01:00 PM\n• **Evening OPD:** 04:00 PM – 08:00 PM\n• **Emergency & Casualty:** Open 24/7 (All 365 Days)\n\nWould you like me to book a slot with one of our specialists today or tomorrow?`,
+        content: `🏥 **Aivry Hospital OPD Consultation Hours:**\n\n• **Morning OPD:** 09:00 AM – 01:00 PM\n• **Evening OPD:** 04:00 PM – 08:00 PM\n• **Emergency & Casualty:** Open 24/7 (All 365 Days)\n\nWould you like me to schedule an appointment for you? If yes, please share the **Patient's Full Name**.`,
         isAppointmentCard: false
       };
     }
 
-    // 3. Extract Phone Number if present
-    const phoneMatch = raw.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\d{10}/);
-    if (phoneMatch) {
-      newCtx.phone_number = phoneMatch[0];
-    }
-
-    // 4. Extract Department if present
+    // 3. Extract Department if present in message
     if (lower.includes('cardio') || lower.includes('heart')) {
       newCtx.department = 'Cardiology';
     } else if (lower.includes('pediatric') || lower.includes('child') || lower.includes('baby')) {
@@ -162,11 +156,11 @@ export default function ChatEmulator({
       newCtx.department = 'Dermatology';
     } else if (lower.includes('ent') || lower.includes('ear') || lower.includes('throat')) {
       newCtx.department = 'ENT';
-    } else if (lower.includes('general') || lower.includes('fever') || lower.includes('cough') || lower.includes('cold') || lower.includes('physician')) {
+    } else if (lower.includes('general') || lower.includes('fever') || lower.includes('cough') || lower.includes('cold') || lower.includes('physician') || lower.includes('checkup')) {
       newCtx.department = 'General Medicine';
     }
 
-    // 5. Extract Date
+    // 4. Extract Date if present
     if (lower.includes('tomorrow')) {
       const d = new Date();
       d.setDate(d.getDate() + 1);
@@ -177,84 +171,126 @@ export default function ChatEmulator({
       const dateMatch = raw.match(/\d{4}-\d{2}-\d{2}/);
       if (dateMatch) {
         newCtx.date = dateMatch[0];
+      } else if (lower.includes('monday') || lower.includes('tuesday') || lower.includes('wednesday') || lower.includes('thursday') || lower.includes('friday') || lower.includes('saturday') || lower.includes('sunday')) {
+        const d = new Date();
+        d.setDate(d.getDate() + 2);
+        newCtx.date = d.toISOString().split('T')[0];
       }
     }
 
-    // 6. Extract Time
+    // 5. Extract Time if present
     const timeMatch = raw.match(/(?:1[0-2]|0?[1-9]):[0-5][0-9]\s*(?:am|pm|AM|PM)?|\d{1,2}\s*(?:am|pm|AM|PM)/i);
     if (timeMatch) {
       newCtx.time = timeMatch[0].toUpperCase();
+    } else if (lower.includes('morning')) {
+      newCtx.time = '10:30 AM';
+    } else if (lower.includes('evening') || lower.includes('afternoon')) {
+      newCtx.time = '04:30 PM';
+    }
+
+    // 6. Extract Phone Number if present
+    const phoneMatch = raw.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\d{10}/);
+    if (phoneMatch) {
+      newCtx.phone_number = phoneMatch[0];
     }
 
     // 7. Extract Name
-    const nameMatch = raw.match(/(?:my name is|i am|patient is|name is|for)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
+    // Check if user says "my name is X" or "for X"
+    const nameMatch = raw.match(/(?:my name is|i am|name is|patient is|patient name is|for)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
     if (nameMatch) {
       newCtx.patient_name = nameMatch[1];
-    } else if (!newCtx.patient_name && !lower.includes('book') && !lower.includes('appointment') && !lower.includes('hello') && !lower.includes('hi') && raw.split(/\s+/).length <= 3 && !phoneMatch && !timeMatch) {
-      const cleanName = raw.replace(/[^a-zA-Z\s]/g, '').trim();
-      if (cleanName.length >= 2 && !['yes', 'no', 'ok', 'okay', 'sure', 'thanks', 'thank you'].includes(cleanName.toLowerCase())) {
-        newCtx.patient_name = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+    } else if (!newCtx.patient_name && !phoneMatch && !timeMatch && !newCtx.department && !newCtx.date) {
+      // If user typed just their name (e.g. "Arbaz" or "Arbaz Khan" or "Rahul Sharma")
+      if (!lower.includes('book') && !lower.includes('appointment') && !lower.includes('hello') && !lower.includes('hi') && !lower.includes('hey')) {
+        const clean = raw.replace(/[^a-zA-Z\s]/g, '').trim();
+        if (clean.length >= 2 && !['yes', 'no', 'ok', 'okay', 'sure', 'thanks', 'thank you'].includes(clean.toLowerCase())) {
+          newCtx.patient_name = clean.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        }
       }
     }
 
-    // Save updated context
+    // Update state context
     setContext(newCtx);
 
-    // 8. Auto-Book if we have a Name + (Department OR Date/Time OR intent to book)
-    const hasBookingIntent = lower.includes('book') || lower.includes('appointment') || newCtx.date || newCtx.time || (newCtx.patient_name && newCtx.department);
+    // ============================================================
+    // STEP-BY-STEP CONVERSATIONAL FLOW
+    // ============================================================
 
-    if (hasBookingIntent) {
-      const confirmedName = newCtx.patient_name || (newCtx.phone_number ? `Patient (${newCtx.phone_number.slice(-4)})` : "Arbaz Khan");
-      const confirmedDept = newCtx.department || "Cardiology";
-      const confirmedDate = newCtx.date || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-      const confirmedTime = newCtx.time || "10:30 AM";
-      const confirmedPhone = newCtx.phone_number || "+91 98765 43210";
-      const doctorName = confirmedDept === 'Pediatrics' ? 'Dr. Shalini Roy' : confirmedDept === 'Orthopedics' ? 'Dr. Vivek Menon' : 'Dr. Rajesh Gupta';
-
-      const apptData = {
-        patient_name: confirmedName,
-        phone_number: confirmedPhone,
-        date: confirmedDate,
-        time: confirmedTime,
-        department: confirmedDept
-      };
-
-      // IMMEDIATELY dispatch booking event & trigger callback
-      if (onBookAppointment) {
-        onBookAppointment(apptData);
-      }
-
-      if (onExtractEntity) {
-        onExtractEntity({
-          intent: "book_appointment",
-          entities: apptData,
-          triage_level: "NORMAL",
-          confidence: 0.99
-        });
-      }
-
-      // Reset context after confirmed booking
-      setContext({});
-
+    // Step A: If Patient Name is not yet provided
+    if (!newCtx.patient_name) {
       return {
-        content: `✅ **Appointment Successfully Booked!**\n\nThank you, **${confirmedName}**. Your consultation has been confirmed with **${doctorName}** (${confirmedDept}) and stored in the clinic dashboard.\n\n📅 **Date:** ${confirmedDate}\n🕒 **Time Slot:** ${confirmedTime}\n📍 **Room:** OPD Block A, Room 204\n📱 **WhatsApp Sync:** ${confirmedPhone}`,
-        isAppointmentCard: true,
-        appointmentData: apptData
-      };
-    }
-
-    // If user provided Name only (e.g. "arbaz"):
-    if (newCtx.patient_name && !newCtx.department) {
-      return {
-        content: `Nice to meet you, **${newCtx.patient_name}**! 👋\n\nWhich department would you like to book with?\n• **Cardiology** (Heart / Chest)\n• **Pediatrics** (Child Care)\n• **Orthopedics** (Bones & Joints)\n• **General Medicine** (Checkup)\n\nReply with a specialty or time (e.g. *Cardiology tomorrow 10:30 AM*) to confirm your slot!`,
+        content: `👋 Hello! I would be happy to help you schedule a doctor consultation at **Aivry Hospital**.\n\nMay I please have the **Patient's Full Name**?`,
         isAppointmentCard: false
       };
     }
 
-    // Default friendly greeting
+    // Step B: If Department / Doctor is not yet provided
+    if (!newCtx.department) {
+      return {
+        content: `Nice to meet you, **${newCtx.patient_name}**! 👋\n\nWhich department or specialist would you like to consult with?\n\n• **Cardiology** (Heart / Chest - Dr. Rajesh Gupta)\n• **Pediatrics** (Child Health - Dr. Shalini Roy)\n• **Orthopedics** (Bones & Joints - Dr. Vivek Menon)\n• **General Medicine** (Fever / General Checkup - Dr. Ananya Rao)\n• **Neurology / ENT / Dermatology**\n\nPlease reply with your preferred department or symptoms.`,
+        isAppointmentCard: false
+      };
+    }
+
+    // Step C: If Date is not yet provided
+    if (!newCtx.date) {
+      const doc = newCtx.department === 'Pediatrics' ? 'Dr. Shalini Roy' : newCtx.department === 'Orthopedics' ? 'Dr. Vivek Menon' : 'Dr. Rajesh Gupta';
+      return {
+        content: `Got it, **${newCtx.department}** with **${doc}** for **${newCtx.patient_name}**.\n\nWhat **date** would you prefer for your visit? (e.g., *Tomorrow*, *Today*, or *YYYY-MM-DD*)`,
+        isAppointmentCard: false
+      };
+    }
+
+    // Step D: If Time slot is not yet provided
+    if (!newCtx.time) {
+      return {
+        content: `Great! We have consultation slots available on **${newCtx.date}**:\n\n• **Morning Slots:** 09:30 AM, 10:30 AM, 11:45 AM\n• **Evening Slots:** 04:30 PM, 06:00 PM\n\nWhat **time slot** works best for you?`,
+        isAppointmentCard: false
+      };
+    }
+
+    // Step E: If Phone number is not yet provided
+    if (!newCtx.phone_number) {
+      return {
+        content: `Almost done! What is your **WhatsApp Contact Phone Number** so we can send your digital appointment pass? (e.g. *+91 98765 43210*)`,
+        isAppointmentCard: false
+      };
+    }
+
+    // ============================================================
+    // Step F: ALL DETAILS COLLECTED -> CONFIRM AND STORE APPOINTMENT!
+    // ============================================================
+    const docName = newCtx.department === 'Pediatrics' ? 'Dr. Shalini Roy' : newCtx.department === 'Orthopedics' ? 'Dr. Vivek Menon' : 'Dr. Rajesh Gupta';
+    
+    const apptData = {
+      patient_name: newCtx.patient_name,
+      phone_number: newCtx.phone_number,
+      date: newCtx.date,
+      time: newCtx.time,
+      department: newCtx.department
+    };
+
+    // Save to database & dashboard state
+    if (onBookAppointment) {
+      onBookAppointment(apptData);
+    }
+
+    if (onExtractEntity) {
+      onExtractEntity({
+        intent: "book_appointment",
+        entities: apptData,
+        triage_level: "NORMAL",
+        confidence: 0.99
+      });
+    }
+
+    // Reset context for subsequent bookings
+    setContext({});
+
     return {
-      content: `Hello! 👋 How can I help you today at **Aivry Hospital**?\n\n• To book an appointment: type **"Book Dr. Gupta tomorrow 10:30 AM"** or your name.\n• To check timings: type **OPD hours**\n• For emergency: type **Emergency casualty**`,
-      isAppointmentCard: false
+      content: `✅ **Appointment Successfully Booked!**\n\nThank you, **${apptData.patient_name}**. Your consultation is confirmed with **${docName}** (${apptData.department}).\n\n📅 **Date:** ${apptData.date}\n🕒 **Time Slot:** ${apptData.time}\n📍 **Location:** OPD Block A, Room 204\n📱 **WhatsApp Sync:** ${apptData.phone_number}\n\nYour appointment has been registered in the hospital schedule dashboard.`,
+      isAppointmentCard: true,
+      appointmentData: apptData
     };
   };
 
@@ -276,7 +312,7 @@ export default function ChatEmulator({
     setInputValue('');
     setIsTyping(true);
 
-    // Simulate realistic typing delay (400ms)
+    // Realistic human response delay
     setTimeout(() => {
       const resp = generateConversationalReply(textToSend, context);
       const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -382,7 +418,7 @@ export default function ChatEmulator({
                   <div className="mt-2.5 pt-2 border-t border-border/40 flex flex-col gap-1.5">
                     <button
                       type="button"
-                      onClick={() => handleSendMessage(undefined, "Book an appointment for Arbaz Khan tomorrow 10:30 AM in Cardiology")}
+                      onClick={() => handleSendMessage(undefined, "I want to book an appointment")}
                       className="text-left text-[11px] px-2.5 py-1.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-medium transition-colors flex items-center justify-between"
                     >
                       <span>📅 Book Doctor Appointment</span>
@@ -441,7 +477,7 @@ export default function ChatEmulator({
           </button>
           <input 
             type="text" 
-            placeholder="Type a message or symptom..." 
+            placeholder="Type a message or reply..." 
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             className="flex-1 rounded-full border-none bg-white dark:bg-[#2a3942] px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground shadow-xs outline-none focus:ring-1 focus:ring-[#008069]"
