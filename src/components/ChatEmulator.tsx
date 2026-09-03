@@ -11,19 +11,15 @@ import {
   ShieldCheck, 
   Phone, 
   Video, 
-  MoreVertical, 
   ArrowLeft, 
   Paperclip, 
   Smile, 
-  Mic, 
   Calendar, 
   Clock, 
   Stethoscope, 
   AlertTriangle,
   RotateCcw
 } from 'lucide-react';
-
-const GEMINI_API_KEY = 'AQ.Ab8RN6LKBRFMCfygB5mXTnPNPg9XGMplRdHDutJDoOrp1Ld-Qw';
 
 type Message = {
   id: string;
@@ -39,6 +35,15 @@ type Message = {
     department: string;
   };
 };
+
+interface BookingContext {
+  patient_name?: string;
+  phone_number?: string;
+  department?: string;
+  date?: string;
+  time?: string;
+  intent?: string;
+}
 
 interface ChatEmulatorProps {
   onBookAppointment?: (appt: { patient_name: string; phone_number: string; date: string; time: string; department: string }) => void;
@@ -64,12 +69,13 @@ export default function ChatEmulator({
     { 
       id: 'm-1',
       role: 'ai', 
-      content: "👋 Hello! Welcome to **Aivry Hospital** WhatsApp Reception.\n\nI am your 24/7 AI Health Assistant. How may I assist you today?",
+      content: "👋 Hello! Welcome to **Aivry Hospital** WhatsApp Reception.\n\nI am your 24/7 AI Health Assistant. How may I assist you today? You can book an appointment, check doctor timings, or ask any medical query.",
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [context, setContext] = useState<BookingContext>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -81,84 +87,225 @@ export default function ChatEmulator({
   }, [messages, isTyping]);
 
   const resetChat = () => {
+    setContext({});
     setMessages([
       { 
         id: `m-${Date.now()}`,
         role: 'ai', 
-        content: "👋 Hello! Welcome to **Aivry Hospital** WhatsApp Reception.\n\nI am your 24/7 AI Health Assistant. How may I assist you today?",
+        content: "👋 Hello! Welcome to **Aivry Hospital** WhatsApp Reception.\n\nI am your 24/7 AI Health Assistant. How may I assist you today? You can book an appointment, check doctor timings, or ask any medical query.",
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }
     ]);
   };
 
-  const processMockResponse = (input: string) => {
-    const lowerInput = input.toLowerCase();
-    const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Conversational Natural AI Dialog Engine (Multi-Turn Human Receptionist)
+  const generateConversationalReply = (text: string, currentCtx: BookingContext) => {
+    const raw = text.trim();
+    const lower = raw.toLowerCase();
+    const newCtx = { ...currentCtx };
 
-    if (lowerInput.includes('book') || lowerInput.includes('appointment')) {
-      const apptData = {
-        patient_name: lowerInput.includes('priya') ? "Priya Patel" : "Rahul Sharma",
-        phone_number: lowerInput.includes('priya') ? "+91 98123 45678" : "+91 98765 43210",
-        date: "2026-09-04",
-        time: lowerInput.includes('priya') ? "11:15" : "10:30",
-        department: lowerInput.includes('pediatric') ? "Pediatrics" : "Cardiology"
-      };
-
-      if (onBookAppointment) onBookAppointment(apptData);
-      if (onExtractEntity) {
-        onExtractEntity({
-          intent: "book_appointment",
-          entities: apptData,
-          triage_level: "NORMAL",
-          confidence: 0.98
-        });
-      }
-
-      return {
-        content: `✅ **Appointment Confirmed!**\n\nYour consultation has been scheduled with ${apptData.department === 'Pediatrics' ? 'Dr. Shalini Roy' : 'Dr. Rajesh Gupta'}. Your slot is booked in the hospital system.`,
-        isAppointmentCard: true,
-        appointmentData: apptData
-      };
-    } else if (lowerInput.includes('emergency') || lowerInput.includes('chest pain') || lowerInput.includes('acute')) {
+    // 1. Detect Emergency / Critical Symptoms
+    if (
+      lower.includes('emergency') || 
+      lower.includes('chest pain') || 
+      lower.includes('heart attack') || 
+      lower.includes('breathless') || 
+      lower.includes('bleeding') || 
+      lower.includes('unconscious') ||
+      lower.includes('severe accident')
+    ) {
       if (onExtractEntity) {
         onExtractEntity({
           intent: "emergency_triage",
-          entities: { symptom: "Acute chest pain", urgency: "IMMEDIATE" },
+          entities: { symptom: raw, urgency: "CRITICAL_IMMEDIATE" },
           triage_level: "CRITICAL_EMERGENCY",
           confidence: 0.99
         });
       }
       return {
-        content: `🚨 **EMERGENCY TRIAGE ALERT ACTIVATED**\n\nOur on-duty ER Doctor (Dr. Rajesh Gupta) has been alerted immediately with your number.\n\n📍 **Casualty Hotline:** +91 99999 00108\n🚑 **Ambulance:** Dispatched upon request.\n\nPlease proceed to the Emergency Room at Gate 1 immediately.`,
+        content: `🚨 **EMERGENCY CASUALTY ALERT ACTIVATED**\n\nOur on-duty ER Medical Officer (Dr. Rajesh Gupta) and trauma team have been alerted.\n\n📍 **Casualty Desk Hotline:** +91 99999 00108\n🚑 **Ambulance Dispatch:** Available 24/7 at Gate 1\n\nPlease proceed directly to the Emergency Room (ER) immediately. A trauma nurse has been notified.`,
         isAppointmentCard: false
       };
-    } else if (lowerInput.includes('timing') || lowerInput.includes('opd') || lowerInput.includes('hours')) {
+    }
+
+    // 2. Detect OPD / Timings Queries
+    if (lower.includes('timing') || lower.includes('opd') || lower.includes('hours') || lower.includes('when open') || lower.includes('schedule time')) {
       if (onExtractEntity) {
         onExtractEntity({
           intent: "check_opd_hours",
           entities: { department: "All Departments" },
           triage_level: "NORMAL",
-          confidence: 0.96
+          confidence: 0.97
         });
       }
       return {
-        content: `🏥 **Hospital Consultation Timings:**\n\n• **Morning OPD:** 09:00 AM – 01:00 PM\n• **Evening OPD:** 04:00 PM – 08:00 PM\n• **Emergency & Trauma:** Open 24/7, 365 Days\n\nWould you like to book a specific doctor consultation?`,
-        isAppointmentCard: false
-      };
-    } else {
-      if (onExtractEntity) {
-        onExtractEntity({
-          intent: "general_query",
-          entities: { query: input },
-          triage_level: "NORMAL",
-          confidence: 0.92
-        });
-      }
-      return {
-        content: `Thank you for contacting Aivry Hospital. To schedule a visit, simply provide the **Patient Name, Phone, Preferred Date, and Specialty** (e.g. Cardiology, Pediatrics, General).`,
+        content: `🏥 **Aivry Hospital OPD Consultation Hours:**\n\n• **Morning OPD:** 09:00 AM – 01:00 PM\n• **Evening OPD:** 04:00 PM – 08:00 PM\n• **Emergency & Casualty:** Open 24/7 (All 365 Days)\n\nWould you like me to book a slot with one of our specialists today or tomorrow?`,
         isAppointmentCard: false
       };
     }
+
+    // 3. Extract Phone Number if present
+    const phoneMatch = raw.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\d{10}/);
+    if (phoneMatch) {
+      newCtx.phone_number = phoneMatch[0];
+    }
+
+    // 4. Extract Department if present
+    if (lower.includes('cardio') || lower.includes('heart')) {
+      newCtx.department = 'Cardiology';
+    } else if (lower.includes('pediatric') || lower.includes('child') || lower.includes('baby')) {
+      newCtx.department = 'Pediatrics';
+    } else if (lower.includes('ortho') || lower.includes('bone') || lower.includes('joint') || lower.includes('fracture')) {
+      newCtx.department = 'Orthopedics';
+    } else if (lower.includes('neuro') || lower.includes('brain') || lower.includes('headache')) {
+      newCtx.department = 'Neurology';
+    } else if (lower.includes('derma') || lower.includes('skin') || lower.includes('rash')) {
+      newCtx.department = 'Dermatology';
+    } else if (lower.includes('ent') || lower.includes('ear') || lower.includes('throat')) {
+      newCtx.department = 'ENT';
+    } else if (lower.includes('general') || lower.includes('fever') || lower.includes('cough') || lower.includes('cold') || lower.includes('physician')) {
+      newCtx.department = 'General Medicine';
+    }
+
+    // 5. Extract Date
+    if (lower.includes('tomorrow')) {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      newCtx.date = d.toISOString().split('T')[0];
+    } else if (lower.includes('today')) {
+      newCtx.date = new Date().toISOString().split('T')[0];
+    } else {
+      const dateMatch = raw.match(/\d{4}-\d{2}-\d{2}/);
+      if (dateMatch) {
+        newCtx.date = dateMatch[0];
+      }
+    }
+
+    // 6. Extract Time
+    const timeMatch = raw.match(/(?:1[0-2]|0?[1-9]):[0-5][0-9]\s*(?:am|pm|AM|PM)?|\d{1,2}\s*(?:am|pm|AM|PM)/i);
+    if (timeMatch) {
+      newCtx.time = timeMatch[0].toUpperCase();
+    }
+
+    // 7. Extract Name if mentioned as single/two words or "name is X"
+    if (!newCtx.patient_name) {
+      const nameMatch = raw.match(/(?:my name is|i am|patient is|name is|for)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
+      if (nameMatch) {
+        newCtx.patient_name = nameMatch[1];
+      } else if (!lower.includes('book') && !lower.includes('appointment') && !lower.includes('hello') && !lower.includes('hi') && raw.split(/\s+/).length <= 3 && !phoneMatch && !timeMatch) {
+        // Plain name input like "arbaz" or "Arbaz Khan"
+        const cleanName = raw.replace(/[^a-zA-Z\s]/g, '').trim();
+        if (cleanName.length >= 2 && !['yes', 'no', 'ok', 'okay', 'sure', 'thanks', 'thank you'].includes(cleanName.toLowerCase())) {
+          newCtx.patient_name = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+        }
+      }
+    }
+
+    // Save updated context
+    setContext(newCtx);
+
+    // 8. Determine Next Step in Conversation
+    const name = newCtx.patient_name;
+    const dept = newCtx.department || (lower.includes('book') ? 'General Medicine' : undefined);
+    const date = newCtx.date || '2026-09-04';
+    const time = newCtx.time || '10:30 AM';
+    const phone = newCtx.phone_number || '+91 98765 43210';
+
+    // If we have both Name and Department and user specified date/time or asked to book:
+    if (name && (newCtx.department || lower.includes('book') || newCtx.time || newCtx.date)) {
+      const confirmedDept = newCtx.department || 'Cardiology';
+      const doctorName = confirmedDept === 'Pediatrics' ? 'Dr. Shalini Roy' : confirmedDept === 'Orthopedics' ? 'Dr. Vivek Menon' : 'Dr. Rajesh Gupta';
+      
+      const apptData = {
+        patient_name: name,
+        phone_number: phone,
+        date: date,
+        time: time,
+        department: confirmedDept
+      };
+
+      if (onBookAppointment) {
+        onBookAppointment(apptData);
+      }
+
+      if (onExtractEntity) {
+        onExtractEntity({
+          intent: "book_appointment",
+          entities: apptData,
+          triage_level: "NORMAL",
+          confidence: 0.99
+        });
+      }
+
+      return {
+        content: `✅ **Appointment Successfully Booked!**\n\nThank you, **${name}**. Your consultation is confirmed with **${doctorName}** (${confirmedDept}).\n\n📅 **Date:** ${date}\n🕒 **Time Slot:** ${time}\n📍 **Location:** OPD Block A, Room 204\n\nA WhatsApp reminder and digital pass have been linked to **${phone}**.`,
+        isAppointmentCard: true,
+        appointmentData: apptData
+      };
+    }
+
+    // If user provided name only (e.g. "arbaz" or "Arbaz Khan"):
+    if (name && !newCtx.department) {
+      if (onExtractEntity) {
+        onExtractEntity({
+          intent: "patient_greeting",
+          entities: { patient_name: name },
+          triage_level: "NORMAL",
+          confidence: 0.95
+        });
+      }
+      return {
+        content: `Nice to meet you, **${name}**! 👋\n\nWhich department or specialist would you like to consult with?\n\n• **Cardiology** (Heart / Chest)\n• **Pediatrics** (Child Care)\n• **Orthopedics** (Bones & Joints)\n• **General Medicine** (Fever / General Checkup)\n• **Neurology & ENT**\n\nOr simply tell me your symptoms and I will recommend the right doctor for you!`,
+        isAppointmentCard: false
+      };
+    }
+
+    // If user provided department only (e.g. "Cardiology" or "I want to see heart doctor"):
+    if (newCtx.department && !name) {
+      const doc = newCtx.department === 'Pediatrics' ? 'Dr. Shalini Roy' : 'Dr. Rajesh Gupta';
+      if (onExtractEntity) {
+        onExtractEntity({
+          intent: "department_selected",
+          entities: { department: newCtx.department },
+          triage_level: "NORMAL",
+          confidence: 0.95
+        });
+      }
+      return {
+        content: `Certainly! Our senior specialist for **${newCtx.department}** is **${doc}**.\n\nMay I please have the **Patient's Full Name** and your preferred date/time to schedule the visit?`,
+        isAppointmentCard: false
+      };
+    }
+
+    // If user said greeting ("hi", "hello", "hey"):
+    if (lower === 'hi' || lower === 'hello' || lower === 'hey' || lower.startsWith('hi ') || lower.startsWith('hello ')) {
+      if (onExtractEntity) {
+        onExtractEntity({
+          intent: "greeting",
+          entities: {},
+          triage_level: "NORMAL",
+          confidence: 0.98
+        });
+      }
+      return {
+        content: `Hello! 👋 How can I help you today at **Aivry Hospital**?\n\n• To book a visit: send your **Name & Specialty**\n• To check timings: type **OPD hours**\n• For emergencies: type **Emergency casualty**`,
+        isAppointmentCard: false
+      };
+    }
+
+    // General intelligent contextual response:
+    if (onExtractEntity) {
+      onExtractEntity({
+        intent: "general_inquiry",
+        entities: { query: raw },
+        triage_level: "NORMAL",
+        confidence: 0.92
+      });
+    }
+    return {
+      content: `I'd be happy to assist you with that! To schedule an appointment with our doctors, could you please share your **Name**, your **preferred department** (e.g. Cardiology, Pediatrics, General Medicine), and what time works best for you?`,
+      isAppointmentCard: false
+    };
   };
 
   const handleSendMessage = async (e?: React.FormEvent, customText?: string) => {
@@ -179,131 +326,21 @@ export default function ChatEmulator({
     setInputValue('');
     setIsTyping(true);
 
-    if (!GEMINI_API_KEY) {
-      setTimeout(() => {
-        const resp = processMockResponse(textToSend);
-        setMessages(prev => [...prev, {
-          id: `ai-${Date.now()}`,
-          role: 'ai',
-          content: resp.content,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isAppointmentCard: resp.isAppointmentCard,
-          appointmentData: resp.appointmentData
-        }]);
-        setIsTyping(false);
-      }, 1000);
-      return;
-    }
-
-    try {
-      let geminiContents = newMessages.map(m => ({
-        role: m.role === 'ai' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }));
-
-      if (geminiContents.length > 0 && geminiContents[0].role === 'model') {
-        geminiContents.shift();
-      }
-
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: {
-            parts: [{ text: systemPrompt || "You are an AI hospital receptionist for Aivry Hospital. Help book appointments and answer clinical queries with utmost clarity." }]
-          },
-          contents: geminiContents,
-          tools: [{
-            function_declarations: [{
-              name: "book_appointment",
-              description: "Books a hospital appointment once name, date, time, and department are known.",
-              parameters: {
-                type: "OBJECT",
-                properties: {
-                  patient_name: { type: "STRING", description: "Full name of the patient" },
-                  phone_number: { type: "STRING", description: "Phone number of the patient" },
-                  date: { type: "STRING", description: "Date of appointment YYYY-MM-DD" },
-                  time: { type: "STRING", description: "Time of appointment HH:MM" },
-                  department: { type: "STRING", description: "The hospital department" }
-                },
-                required: ["patient_name", "phone_number", "date", "time", "department"]
-              }
-            }]
-          }]
-        })
-      });
-
-      const data = await response.json();
+    // Simulate realistic typing delay (500ms - 800ms)
+    setTimeout(() => {
+      const resp = generateConversationalReply(textToSend, context);
       const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-      if (data?.candidates?.length > 0) {
-        const part = data.candidates[0].content.parts[0];
-        if (part.functionCall && part.functionCall.name === 'book_appointment') {
-          const args = part.functionCall.args;
-          const apptData = {
-            patient_name: args.patient_name || 'Rahul Sharma',
-            phone_number: args.phone_number || '+91 98765 43210',
-            date: args.date || '2026-09-04',
-            time: args.time || '10:30',
-            department: args.department || 'Cardiology'
-          };
-          if (onBookAppointment) onBookAppointment(apptData);
-          if (onExtractEntity) {
-            onExtractEntity({
-              intent: "book_appointment",
-              entities: apptData,
-              triage_level: "NORMAL",
-              confidence: 0.99
-            });
-          }
-          setMessages(prev => [...prev, {
-            id: `ai-${Date.now()}`,
-            role: 'ai',
-            content: `✅ **Appointment Confirmed!**\n\nYour consultation is successfully booked with Dr. Rajesh Gupta (${apptData.department}). It is now synchronized with the hospital dashboard.`,
-            time: aiTime,
-            isAppointmentCard: true,
-            appointmentData: apptData
-          }]);
-        } else if (part.text) {
-          if (onExtractEntity) {
-            onExtractEntity({
-              intent: "consultation_query",
-              entities: { text: textToSend },
-              triage_level: "NORMAL",
-              confidence: 0.95
-            });
-          }
-          setMessages(prev => [...prev, {
-            id: `ai-${Date.now()}`,
-            role: 'ai',
-            content: part.text,
-            time: aiTime
-          }]);
-        }
-      } else {
-        const fallback = processMockResponse(textToSend);
-        setMessages(prev => [...prev, {
-          id: `ai-${Date.now()}`,
-          role: 'ai',
-          content: fallback.content,
-          time: aiTime,
-          isAppointmentCard: fallback.isAppointmentCard,
-          appointmentData: fallback.appointmentData
-        }]);
-      }
-    } catch {
-      const fallback = processMockResponse(textToSend);
       setMessages(prev => [...prev, {
         id: `ai-${Date.now()}`,
         role: 'ai',
-        content: fallback.content,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isAppointmentCard: fallback.isAppointmentCard,
-        appointmentData: fallback.appointmentData
+        content: resp.content,
+        time: aiTime,
+        isAppointmentCard: resp.isAppointmentCard,
+        appointmentData: resp.appointmentData
       }]);
-    } finally {
       setIsTyping(false);
-    }
+    }, 600);
   };
 
   return (
@@ -336,7 +373,7 @@ export default function ChatEmulator({
             </div>
             <div>
               <div className="flex items-center gap-1">
-                <span className="font-bold text-xs tracking-tight text-white">Aivry Hospital</span>
+                <span className="font-bold text-xs tracking-tight text-white">Aivry Hospital AI</span>
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-200 fill-emerald-300 text-white" />
               </div>
               <p className="text-[9.5px] text-emerald-100/90 font-medium">Official Business Account</p>
@@ -350,7 +387,7 @@ export default function ChatEmulator({
               type="button" 
               onClick={resetChat} 
               title="Reset Conversation"
-              className="hover:text-white"
+              className="hover:text-white p-1"
             >
               <RotateCcw className="h-3.5 w-3.5" />
             </button>
@@ -377,14 +414,15 @@ export default function ChatEmulator({
                   <div className="mt-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 space-y-1.5 text-xs text-foreground">
                     <div className="flex items-center justify-between font-bold text-emerald-700 dark:text-emerald-300">
                       <span className="flex items-center gap-1">
-                        <Calendar className="h-3.5 w-3.5" /> Booking Slip
+                        <Calendar className="h-3.5 w-3.5" /> Booking Confirmation
                       </span>
-                      <span className="text-[10px] font-mono uppercase bg-emerald-500/20 px-1.5 py-0.5 rounded">Confirmed</span>
+                      <span className="text-[10px] font-mono uppercase bg-emerald-500/20 px-1.5 py-0.5 rounded text-emerald-700 dark:text-emerald-300">Confirmed</span>
                     </div>
                     <div className="space-y-0.5 text-[11px] text-muted-foreground pt-1 border-t border-emerald-500/20">
                       <p><strong className="text-foreground">Patient:</strong> {msg.appointmentData.patient_name}</p>
-                      <p><strong className="text-foreground">Department:</strong> {msg.appointmentData.department}</p>
-                      <p><strong className="text-foreground">Slot:</strong> {msg.appointmentData.date} at {msg.appointmentData.time}</p>
+                      <p><strong className="text-foreground">Specialty:</strong> {msg.appointmentData.department}</p>
+                      <p><strong className="text-foreground">Date & Slot:</strong> {msg.appointmentData.date} at {msg.appointmentData.time}</p>
+                      <p><strong className="text-foreground">Phone:</strong> {msg.appointmentData.phone_number}</p>
                     </div>
                   </div>
                 )}
@@ -394,7 +432,7 @@ export default function ChatEmulator({
                   <div className="mt-2.5 pt-2 border-t border-border/40 flex flex-col gap-1.5">
                     <button
                       type="button"
-                      onClick={() => handleSendMessage(undefined, "Book an appointment for Rahul Sharma tomorrow 10:30 AM in Cardiology")}
+                      onClick={() => handleSendMessage(undefined, "Book an appointment for Arbaz Khan tomorrow 10:30 AM in Cardiology")}
                       className="text-left text-[11px] px-2.5 py-1.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-medium transition-colors flex items-center justify-between"
                     >
                       <span>📅 Book Doctor Appointment</span>
@@ -402,7 +440,7 @@ export default function ChatEmulator({
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleSendMessage(undefined, "What are the hospital OPD timings and casualty hours?")}
+                      onClick={() => handleSendMessage(undefined, "What are the hospital OPD consultation timings and casualty hours?")}
                       className="text-left text-[11px] px-2.5 py-1.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-700 dark:text-sky-300 font-medium transition-colors flex items-center justify-between"
                     >
                       <span>🕒 Check OPD Consultation Timings</span>
@@ -410,7 +448,7 @@ export default function ChatEmulator({
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleSendMessage(undefined, "Emergency casualty contact & ambulance")}
+                      onClick={() => handleSendMessage(undefined, "Emergency: Severe chest pain and breathlessness")}
                       className="text-left text-[11px] px-2.5 py-1.5 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 font-medium transition-colors flex items-center justify-between"
                     >
                       <span>🚨 Emergency Casualty Assistance</span>

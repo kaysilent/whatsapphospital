@@ -69,7 +69,7 @@ function LoginPageInner() {
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
             <Activity className="h-7 w-7 text-white" />
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight text-foreground text-center">
+          <CardTitle className="text-2xl font-bold tracking-tight text-foreground text-center w-full">
             {inviteToken ? "Join Aivry Hospital CRM" : "Sign In to Clinic CRM"}
           </CardTitle>
           <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-xs text-center">

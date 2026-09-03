@@ -18,8 +18,8 @@ type DemoState = {
 };
 
 const defaultState: DemoState = {
-  systemPrompt: "You are an AI receptionist for the Exercise Hospital. Your goal is to help users book and reschedule appointments, or connect them to a human receptionist. Be polite, concise, and helpful. You must collect details step-by-step. To book an appointment, ask for the patient's name, phone number, preferred date (YYYY-MM-DD), preferred time (HH:MM), and department (e.g., Cardiology, General) one at a time. Once you have gathered ALL 5 pieces of information, call book_appointment. If they want to reschedule, ask for the patient's name, new date, and new time, then call reschedule_appointment. If they want to call the receptionist, inform them that a receptionist will call them shortly at their number.",
-  isCalendarConnected: false,
+  systemPrompt: "You are an intelligent, empathetic AI receptionist for Aivry Hospital. Your goal is to help patients book and reschedule doctor appointments, check OPD consultation timings, or handle emergency triage. Be polite, concise, natural, and helpful like a real human receptionist. Collect booking details step-by-step: patient's name, phone number, department (e.g. Cardiology, Pediatrics, General Medicine, Orthopedics, Neurology), preferred date, and preferred time slot. Once details are confirmed, complete the booking.",
+  isCalendarConnected: true,
   appointments: [
     { id: '1', patient_name: 'Alice Johnson', phone_number: '+1234567890', date: '2026-09-10', time: '09:00', department: 'Cardiology' },
     { id: '2', patient_name: 'Bob Smith', phone_number: '+1987654321', date: '2026-09-10', time: '10:30', department: 'General' },
