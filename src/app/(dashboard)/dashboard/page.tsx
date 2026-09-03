@@ -110,66 +110,63 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Premium Jarvis / Arc Reactor Hero Banner */}
-      <div className="relative overflow-hidden rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-slate-950 via-cyan-950/40 to-slate-950 p-6 sm:p-8 text-white shadow-2xl shadow-cyan-950/50 backdrop-blur-xl">
-        <div className="absolute -right-16 -top-16 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl animate-pulse" />
-        <div className="absolute -left-16 -bottom-16 h-72 w-72 rounded-full bg-blue-600/10 blur-3xl" />
-        
-        {/* Subtle Sci-Fi Grid Overlay */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#06b6d410_1px,transparent_1px),linear-gradient(to_bottom,#06b6d410_1px,transparent_1px)] bg-[size:2rem_2rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] pointer-events-none" />
+      {/* Clean Medical Emerald Hero Banner */}
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 p-6 sm:p-8 text-white shadow-md">
+        <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-emerald-400/20 blur-3xl" />
+        <div className="absolute -left-12 -bottom-12 h-64 w-64 rounded-full bg-teal-400/20 blur-3xl" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="max-w-2xl space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full bg-cyan-500/10 border border-cyan-500/30 px-3 py-1 text-xs font-semibold text-cyan-300 shadow-inner">
-              <Sparkles className="h-3.5 w-3.5 text-cyan-400 animate-spin" />
-              <span>J.A.R.V.I.S. Neural Core Online // WhatsApp Medical Matrix</span>
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
+              <Sparkles className="h-3.5 w-3.5 text-emerald-200" />
+              <span>AI Receptionist & WhatsApp Cloud Active</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-white via-cyan-100 to-cyan-400 bg-clip-text text-transparent">
-              Welcome back, {profile?.full_name?.split(' ')[0] || 'Sir'}
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
+              {greeting}, {profile?.full_name?.split(' ')[0] || 'Doctor'}
             </h1>
-            <p className="text-sm sm:text-base text-cyan-200/70 leading-relaxed font-mono">
-              All neural channels synced. Automated triage, quantum message routing, and appointment matrix operating at peak efficiency.
+            <p className="text-sm sm:text-base text-emerald-50/90 leading-relaxed">
+              Real-time patient communications, automated 24/7 AI WhatsApp triage, and clinic appointment scheduling.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <Link 
               href="/demo"
-              className="inline-flex items-center justify-center rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold shadow-lg shadow-cyan-500/25 text-xs sm:text-sm h-10 px-4 transition-all hover:scale-105 active:scale-95"
+              className="inline-flex items-center justify-center rounded-lg bg-white text-slate-900 hover:bg-emerald-50 font-semibold shadow-md text-xs sm:text-sm h-10 px-4 transition-colors"
             >
-              <Bot className="h-4 w-4 mr-2 text-slate-950" />
-              Launch J.A.R.V.I.S. AI Core
+              <Bot className="h-4 w-4 mr-2 text-emerald-600" />
+              Launch AI Emulator
             </Link>
             <Link 
               href="/broadcasts"
-              className="inline-flex items-center justify-center rounded-lg bg-slate-900/80 hover:bg-slate-800 text-cyan-300 border border-cyan-500/30 backdrop-blur-sm text-xs sm:text-sm h-10 px-4 transition-all hover:border-cyan-400"
+              className="inline-flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-sm text-xs sm:text-sm h-10 px-4 transition-colors"
             >
               <Send className="h-4 w-4 mr-2" />
-              Quantum Broadcast
+              Send Broadcast
             </Link>
           </div>
         </div>
 
         {/* Live Mini Stats Ribbon */}
-        <div className="relative z-10 mt-6 pt-6 border-t border-cyan-500/20 grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono">
+        <div className="relative z-10 mt-6 pt-6 border-t border-white/15 grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div>
-            <span className="text-[10px] font-semibold text-cyan-400/70 uppercase tracking-widest">Neural Latency</span>
-            <p className="text-lg sm:text-xl font-bold mt-0.5 text-cyan-100">0.04ms (&lt; 1s)</p>
+            <span className="text-[11px] font-medium text-emerald-100 uppercase tracking-wider">AI Auto-Reply</span>
+            <p className="text-lg sm:text-xl font-bold mt-0.5">Instant (&lt; 2s)</p>
           </div>
           <div>
-            <span className="text-[10px] font-semibold text-cyan-400/70 uppercase tracking-widest">Core Status</span>
-            <p className="text-lg sm:text-xl font-bold mt-0.5 flex items-center gap-1.5 text-cyan-100">
-              <span className="h-2 w-2 rounded-full bg-cyan-400 animate-ping shadow-[0_0_8px_#22d3ee]" />
-              OPTIMAL [100%]
+            <span className="text-[11px] font-medium text-emerald-100 uppercase tracking-wider">WhatsApp Status</span>
+            <p className="text-lg sm:text-xl font-bold mt-0.5 flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-300 animate-ping" />
+              99.9% Online
             </p>
           </div>
           <div>
-            <span className="text-[10px] font-semibold text-cyan-400/70 uppercase tracking-widest">Protocol</span>
-            <p className="text-lg sm:text-xl font-bold mt-0.5 text-cyan-100">J.A.R.V.I.S. v9.4</p>
+            <span className="text-[11px] font-medium text-emerald-100 uppercase tracking-wider">Triage Level</span>
+            <p className="text-lg sm:text-xl font-bold mt-0.5">Automated</p>
           </div>
           <div>
-            <span className="text-[10px] font-semibold text-cyan-400/70 uppercase tracking-widest">Security</span>
-            <p className="text-lg sm:text-xl font-bold mt-0.5 text-cyan-100">SECURE-ENCRYPTED</p>
+            <span className="text-[11px] font-medium text-emerald-100 uppercase tracking-wider">Clinic Branch</span>
+            <p className="text-lg sm:text-xl font-bold mt-0.5">Main Hospital</p>
           </div>
         </div>
       </div>
