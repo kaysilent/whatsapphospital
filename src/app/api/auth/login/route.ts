@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     const cookieStore = await cookies();
-    const response = NextResponse.json({ success: true });
+    const pendingCookies: Array<{ name: string; value: string; options?: any }> = [];
 
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,14 +28,14 @@ export async function POST(req: NextRequest) {
             return cookieStore.getAll();
           },
           setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) => {
-                cookieStore.set(name, value, options);
-                response.cookies.set(name, value, options);
-              });
-            } catch (err) {
-              console.error('[Auth SetAll Error]:', err);
-            }
+            cookiesToSet.forEach((cookie) => {
+              pendingCookies.push(cookie);
+              try {
+                cookieStore.set(cookie.name, cookie.value, cookie.options);
+              } catch (err) {
+                // Ignore cookieStore errors in API route context
+              }
+            });
           },
         },
       }
@@ -46,25 +46,39 @@ export async function POST(req: NextRequest) {
       password,
     });
 
-    if (error) {
+    if (error || !data?.user) {
       return NextResponse.json(
-        { error: error.message },
+        { error: error?.message || 'Invalid login credentials' },
         { status: 400 }
       );
     }
 
-    return NextResponse.json(
-      {
-        success: true,
-        user: {
-          id: data.user.id,
-          email: data.user.email,
-        },
+    // Build the JSON response
+    const response = NextResponse.json({
+      success: true,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
       },
-      {
-        headers: response.headers,
+      session: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at,
       }
-    );
+    });
+
+    // Explicitly set all cookies onto the response object so Set-Cookie headers are sent
+    pendingCookies.forEach(({ name, value, options }) => {
+      response.cookies.set(name, value, {
+        path: '/',
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: options?.maxAge ?? 60 * 60 * 24 * 7, // 7 days
+        ...options,
+      });
+    });
+
+    return response;
   } catch (err: any) {
     console.error('[API Auth Login Error]:', err);
     return NextResponse.json(

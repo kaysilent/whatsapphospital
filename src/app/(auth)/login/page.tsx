@@ -43,33 +43,33 @@ function LoginPageInner() {
     setLoading(true);
 
     try {
-      // 1. Try server-side login first so Set-Cookie headers are set directly on HTTP response
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
+      const supabase = createClient();
+
+      // 1. Sign in via client-side Supabase client (sets localStorage and document.cookie)
+      const { data: clientAuth, error: clientError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
       });
 
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
-        // Fallback to client-side signIn if API route fails or returns error
-        const supabase = createClient();
-        const { error: clientError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-
-        if (clientError) {
-          setError(data.error || clientError.message);
-          setLoading(false);
-          return;
-        }
+      if (clientError) {
+        setError(clientError.message || "Invalid email or password");
+        setLoading(false);
+        return;
       }
 
-      // Also ensure client-side session is refreshed
+      // 2. Also call server-side login endpoint to ensure SSR / middleware HTTP Set-Cookie headers are sent
       try {
-        const supabase = createClient();
+        await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+      } catch (serverErr) {
+        console.warn("[Server cookie sync]:", serverErr);
+      }
+
+      // 3. Confirm session is active
+      try {
         await supabase.auth.getSession();
       } catch {}
 
@@ -77,29 +77,12 @@ function LoginPageInner() {
         ? `/join/${encodeURIComponent(inviteToken)}`
         : "/dashboard";
 
-      // Small tick to ensure browser has committed cookies
-      setTimeout(() => {
-        window.location.href = destination;
-      }, 50);
+      // 4. Navigate directly to dashboard
+      window.location.href = destination;
     } catch (err: any) {
       console.error("[Login Error]:", err);
-      // Fallback to client-side
-      try {
-        const supabase = createClient();
-        const { error: clientError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        if (clientError) {
-          setError(clientError.message);
-          setLoading(false);
-          return;
-        }
-        window.location.href = inviteToken ? `/join/${encodeURIComponent(inviteToken)}` : "/dashboard";
-      } catch (clientErr: any) {
-        setError(clientErr.message || "An unexpected error occurred. Please try again.");
-        setLoading(false);
-      }
+      setError(err.message || "An unexpected error occurred. Please try again.");
+      setLoading(false);
     }
   };
 
