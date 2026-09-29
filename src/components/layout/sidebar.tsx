@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "@/hooks/use-theme";
+import { useAuth } from "@/hooks/use-auth";
 import { 
   LayoutDashboard, 
   Users, 
   Calendar, 
+  CalendarDays,
   RefreshCcw, 
   Bot, 
   Send, 
@@ -14,49 +16,54 @@ import {
   AlertTriangle, 
   BarChart3, 
   Settings, 
-  LifeBuoy,
-  MessageSquareText,
-  Activity,
-  ShieldCheck,
-  BookOpen
+  LifeBuoy, 
+  MessageSquareText, 
+  Activity, 
+  BookOpen 
 } from "lucide-react";
+import type { AccountRole } from "@/lib/auth/roles";
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
+  badgeColor?: string;
+  minRole?: AccountRole;
+}
 
 interface NavGroup {
   label: string;
-  items: {
-    href: string;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    badge?: string;
-    badgeColor?: string;
-  }[];
+  items: NavItem[];
 }
 
-const navigationGroups: NavGroup[] = [
+const ALL_NAVIGATION_GROUPS: NavGroup[] = [
   {
     label: "Clinical & Inbound",
     items: [
       { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+      { href: "/inbox", label: "Live Inbox", icon: MessageSquareText, badge: "Chats", badgeColor: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
       { href: "/contacts", label: "Patients", icon: Users },
       { href: "/appointments", label: "Appointments", icon: Calendar },
+      { href: "/calendar", label: "Doctor Calendar", icon: CalendarDays, badge: "Dr. Mrinalini", badgeColor: "bg-purple-500/15 text-purple-600 dark:text-purple-400" },
       { href: "/demo", label: "AI Receptionist", icon: Bot, badge: "Live", badgeColor: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
-      { href: "/settings?tab=knowledge", label: "Knowledge Base", icon: BookOpen, badge: "RAG", badgeColor: "bg-primary/15 text-primary" },
+      { href: "/settings?tab=knowledge", label: "Knowledge Base", icon: BookOpen, badge: "RAG", badgeColor: "bg-primary/15 text-primary", minRole: "admin" },
       { href: "/follow-ups", label: "Follow-Ups", icon: RefreshCcw },
     ]
   },
   {
     label: "Messaging & Outreach",
     items: [
-      { href: "/broadcasts", label: "Broadcasts", icon: Send },
-      { href: "/templates", label: "Message Templates", icon: MessageSquareText },
-      { href: "/pipelines", label: "Patient Leads", icon: UserPlus },
+      { href: "/broadcasts", label: "Broadcasts", icon: Send, minRole: "manager" },
+      { href: "/templates", label: "Message Templates", icon: MessageSquareText, minRole: "manager" },
+      { href: "/pipelines", label: "Patient Leads", icon: UserPlus, minRole: "manager" },
     ]
   },
   {
     label: "Insights & Config",
     items: [
-      { href: "/escalations", label: "Escalations", icon: AlertTriangle, badge: "Triage", badgeColor: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
-      { href: "/reports", label: "Reports & Analytics", icon: BarChart3 },
+      { href: "/escalations", label: "Escalations", icon: AlertTriangle, badge: "Triage", badgeColor: "bg-amber-500/15 text-amber-600 dark:text-amber-400", minRole: "manager" },
+      { href: "/reports", label: "Reports & Analytics", icon: BarChart3, minRole: "manager" },
       { href: "/settings", label: "Settings", icon: Settings },
     ]
   }
@@ -69,6 +76,22 @@ interface SidebarProps {
 export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const { appName, logoUrl } = useTheme();
+  const { isStaff, isManager } = useAuth();
+
+  // Filter items based on active role
+  const filteredGroups = ALL_NAVIGATION_GROUPS.map((group) => {
+    const items = group.items.filter((item) => {
+      if (!item.minRole) return true;
+      if (item.minRole === "manager") {
+        return !isStaff; // accessible by manager, admin, super_admin
+      }
+      if (item.minRole === "admin") {
+        return !isStaff && !isManager; // accessible by admin, super_admin
+      }
+      return true;
+    });
+    return { ...group, items };
+  }).filter((group) => group.items.length > 0);
 
   return (
     <aside className="flex flex-col w-64 h-screen border-r border-border bg-sidebar flex-shrink-0 transition-colors duration-200 select-none">
@@ -98,7 +121,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
 
       {/* Navigation Sections */}
       <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-        {navigationGroups.map((group) => (
+        {filteredGroups.map((group) => (
           <div key={group.label} className="space-y-1">
             <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
               {group.label}

@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { SECTION_META, type SettingsSection } from './settings-sections';
 import { SettingsChip, StatusDot } from './settings-chip';
 import { ROLE_META } from './role-meta';
+import type { AccountRole } from '@/lib/auth/roles';
 
 interface OverviewCounts {
   members: number | null;
@@ -143,7 +144,7 @@ export function SettingsOverview({
 
   const displayName = profile?.full_name || profile?.email || t('yourAccount');
   const initial = (profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase();
-  const roleMeta = accountRole ? ROLE_META[accountRole] : null;
+  const roleMeta = accountRole ? (ROLE_META[accountRole] || ROLE_META.staff) : null;
   const RoleIcon = roleMeta?.icon;
 
   const currencyLabel =
@@ -153,14 +154,16 @@ export function SettingsOverview({
 
   // Per-tile loading + subtitle. `null` counts render as a graceful
   // fallback so a single failed query never blanks a tile.
-  const tiles: {
+  const allTiles: {
     section: SettingsSection;
     loading: boolean;
     subtitle: ReactNode;
+    minRole?: AccountRole;
   }[] = [
     {
       section: 'whatsapp',
       loading: whatsappLoading,
+      minRole: 'admin',
       subtitle: !whatsapp?.configured ? (
         t('notSetup')
       ) : whatsapp.connected ? (
@@ -174,8 +177,14 @@ export function SettingsOverview({
       ),
     },
     {
+      section: 'hospital',
+      loading: false,
+      subtitle: 'Clinic Profile, Doctor & Timings',
+    },
+    {
       section: 'members',
       loading: countsLoading,
+      minRole: 'admin',
       subtitle:
         counts?.members == null
           ? t('viewTeamMembers')
@@ -188,6 +197,7 @@ export function SettingsOverview({
     {
       section: 'templates',
       loading: countsLoading,
+      minRole: 'manager',
       subtitle:
         counts?.templates == null
           ? t('manageTemplates')
@@ -200,6 +210,7 @@ export function SettingsOverview({
     {
       section: 'fields',
       loading: countsLoading,
+      minRole: 'admin',
       subtitle:
         counts?.tags == null && counts?.customFields == null
           ? t('tagsAndFields')
@@ -215,14 +226,23 @@ export function SettingsOverview({
     {
       section: 'ai',
       loading: false,
+      minRole: 'admin',
       subtitle: 'System Prompt & Clinical Safeguards',
     },
     {
       section: 'knowledge',
       loading: false,
+      minRole: 'admin',
       subtitle: 'Document RAG & Website Ingestion',
     },
   ];
+
+  const tiles = allTiles.filter((tile) => {
+    if (!tile.minRole) return true;
+    if (tile.minRole === 'admin') return canManageMembers;
+    if (tile.minRole === 'manager') return accountRole !== 'staff' && accountRole !== 'viewer';
+    return true;
+  });
 
   return (
     <section className="animate-in fade-in-50 duration-200">

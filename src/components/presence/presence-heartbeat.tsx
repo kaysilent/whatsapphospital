@@ -20,18 +20,25 @@ import { HEARTBEAT_MS, IDLE_AFTER_MS, type StoredPresence } from "@/lib/presence
  * 'offline' from staleness — no unreliable unload write needed.
  */
 export function PresenceHeartbeat() {
-  const { accountId } = useAuth();
+  const { accountId, user } = useAuth();
 
   // 0 = "never recorded"; set on mount so we don't read the clock during
   // render (impure). Until the effect runs the tab counts as active.
   const lastActivityRef = useRef<number>(0);
 
   useEffect(() => {
-    // Hold off until the account is known. Beating during the brief
-    // window on a fresh signup — authed but profile/account row not yet
-    // created — would make touch_presence raise "No account for caller"
-    // and log a spurious error. The effect re-runs once accountId lands.
-    if (!accountId) return;
+    // Hold off until the account is known and not a standalone demo/mock session.
+    if (
+      !accountId ||
+      !user ||
+      accountId.startsWith("demo-") ||
+      accountId === "00000000-0000-0000-0000-000000000002" ||
+      user.id.startsWith("00000000-") ||
+      user.id.startsWith("demo-") ||
+      user.id.startsWith("doctor-")
+    ) {
+      return;
+    }
 
     const supabase = createClient();
     let cancelled = false;
@@ -50,22 +57,23 @@ export function PresenceHeartbeat() {
 
     const beat = async () => {
       if (cancelled) return;
-      // Coalesce bursts: a tab refocus fires visibilitychange AND focus
-      // together, so skip a beat within 1s of the last to avoid two RPCs
-      // in the same frame. The 30s interval is never affected.
       const t = Date.now();
       if (t - lastBeatAt < 1_000) return;
       lastBeatAt = t;
-      const { error } = await supabase.rpc("touch_presence", {
-        p_status: currentStatus(),
-      });
-      if (error && !cancelled) {
-        // Non-fatal: presence is best-effort.
-        // Suppress 'Failed to fetch' to avoid spamming the console when the backend is asleep.
-        if (!error.message?.includes("Failed to fetch")) {
-          console.error("[PresenceHeartbeat] touch_presence failed:", error.message);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData?.session?.access_token || cancelled) return;
+
+        const { error } = await supabase.rpc("touch_presence", {
+          p_status: currentStatus(),
+        });
+        if (error && !cancelled) {
+          // Non-fatal: presence is best-effort. Suppress unconfigured Supabase warnings.
+          if (!error.message?.includes("Failed to fetch") && !error.message?.includes("Unauthorized") && !error.message?.includes("JWT")) {
+            console.warn("[PresenceHeartbeat] touch_presence notice:", error.message);
+          }
         }
-      }
+      } catch {}
     };
 
     // Activity listeners. `passive` so we never block scroll/input.

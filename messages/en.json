@@ -1283,7 +1283,8 @@
       "dialogTitle": "Invite a teammate",
       "dialogDesc": "Generate a one-time invite link. Share it via WhatsApp, Slack, or any channel you like — no email service required.",
       "roleLabel": "Role",
-      "validForLabel": "Link valid for",
+      "validForLabel": "Invite link expiry (to accept)",
+      "validForHint": "The invitation link will expire after this duration. Once the teammate accepts and joins, their account access is permanent.",
       "days1": "1 day",
       "days7": "7 days",
       "days30": "30 days",
@@ -1442,13 +1443,21 @@
     },
     "roles": {
       "admin": "Admin",
-      "adminHint": "Manage members + everything",
-      "agent": "Agent",
-      "agentHint": "Use features; no settings",
-      "viewer": "Viewer",
-      "viewerHint": "Read-only across the app",
-      "owner": "Owner",
-      "ownerHint": "Full control over account and billing"
+      "adminHint": "Full control over clinic, team, settings & WhatsApp/AI setup",
+      "doctor": "Doctor",
+      "doctorHint": "Patient care, multi-sitting appointments, emergency relay & clinical reports",
+      "staff": "Staff",
+      "staffHint": "Frontline patient chat, booking appointments & contact triage",
+      "super_admin": "Admin",
+      "super_adminHint": "Full control over clinic, team, settings & WhatsApp/AI setup",
+      "manager": "Doctor",
+      "managerHint": "Patient care, multi-sitting appointments, emergency relay & clinical reports",
+      "owner": "Admin",
+      "ownerHint": "Full control over clinic, team, settings & WhatsApp/AI setup",
+      "agent": "Doctor",
+      "agentHint": "Patient care, multi-sitting appointments, emergency relay & clinical reports",
+      "viewer": "Staff",
+      "viewerHint": "Frontline patient chat, booking appointments & contact triage"
     },
     "whatsapp": {
       "title": "WhatsApp connection",
@@ -1518,6 +1527,8 @@
     },
     "sections": {
       "overview": "Overview",
+      "hospital": "Hospital & Treatments",
+      "payments": "Payment Gateway",
       "profile": "Your profile",
       "security": "Login & security",
       "appearance": "Appearance",
@@ -1530,12 +1541,6 @@
       "api": "API keys",
       "ai": "AI Assistant",
       "knowledge": "Knowledge Base"
-    },
-    "roles": {
-      "owner": "Owner",
-      "admin": "Admin",
-      "agent": "Agent",
-      "viewer": "Viewer"
     },
     "groups": {
       "account": "Account",
@@ -1609,7 +1614,7 @@
     },
     "apiKeys": {
       "title": "API keys",
-      "description": "Keys authenticate the public REST API (<apiCode>/api/v1</apiCode>) so you can build your own automations. Send them as <headerCode>Authorization: Bearer &lt;key&gt;</headerCode>.",
+      "description": "Keys authenticate the public REST API (<apiCode>/api/v1</apiCode>) so you can build your own external automations. Send them as <headerCode>Authorization: Bearer [your-key]</headerCode>.",
       "newApiKey": "New API key",
       "noApiKeys": "No API keys yet.",
       "createOneHint": "Click <bold>New API key</bold> to create one.",

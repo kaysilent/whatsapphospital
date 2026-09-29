@@ -8,123 +8,139 @@ import {
   canSendMessages,
   canTransferOwnership,
   canViewOnly,
+  canViewReports,
+  canManageCampaigns,
   hasMinRole,
   isAccountRole,
+  normalizeRole,
+  getRoleDisplayName,
   roleRank,
 } from "./roles";
 
 describe("roleRank", () => {
-  it("orders owner > admin > agent > viewer", () => {
-    expect(roleRank("owner")).toBeGreaterThan(roleRank("admin"));
-    expect(roleRank("admin")).toBeGreaterThan(roleRank("agent"));
-    expect(roleRank("agent")).toBeGreaterThan(roleRank("viewer"));
+  it("orders admin > doctor > staff", () => {
+    expect(roleRank("admin")).toBeGreaterThan(roleRank("doctor"));
+    expect(roleRank("doctor")).toBeGreaterThan(roleRank("staff"));
   });
 
-  it("matches the SQL helper's numeric mapping", () => {
-    // Keep these in lockstep with `is_account_member`'s CASE expression
-    // in supabase/migrations/017_account_sharing.sql — any change here
-    // means the SQL helper needs the same change.
-    expect(roleRank("owner")).toBe(4);
+  it("matches the numeric mapping for all 3 roles + legacy aliases", () => {
     expect(roleRank("admin")).toBe(3);
+    expect(roleRank("super_admin")).toBe(3);
+    expect(roleRank("owner")).toBe(3);
+    expect(roleRank("doctor")).toBe(2);
+    expect(roleRank("manager")).toBe(2);
     expect(roleRank("agent")).toBe(2);
+    expect(roleRank("staff")).toBe(1);
     expect(roleRank("viewer")).toBe(1);
+  });
+});
+
+describe("normalizeRole and getRoleDisplayName", () => {
+  it("normalizes canonical and legacy roles properly", () => {
+    expect(normalizeRole("admin")).toBe("admin");
+    expect(normalizeRole("super_admin")).toBe("admin");
+    expect(normalizeRole("owner")).toBe("admin");
+    expect(normalizeRole("doctor")).toBe("doctor");
+    expect(normalizeRole("manager")).toBe("staff");
+    expect(normalizeRole("agent")).toBe("staff");
+    expect(normalizeRole("staff")).toBe("staff");
+    expect(normalizeRole("viewer")).toBe("staff");
+  });
+
+  it("returns clean display names", () => {
+    expect(getRoleDisplayName("admin")).toBe("Admin");
+    expect(getRoleDisplayName("super_admin")).toBe("Admin");
+    expect(getRoleDisplayName("owner")).toBe("Admin");
+    expect(getRoleDisplayName("doctor")).toBe("Doctor");
+    expect(getRoleDisplayName("staff")).toBe("Staff");
   });
 });
 
 describe("hasMinRole", () => {
   it("returns true when role meets the threshold", () => {
-    expect(hasMinRole("owner", "viewer")).toBe(true);
-    expect(hasMinRole("admin", "agent")).toBe(true);
-    expect(hasMinRole("agent", "agent")).toBe(true);
+    expect(hasMinRole("admin", "staff")).toBe(true);
+    expect(hasMinRole("admin", "doctor")).toBe(true);
+    expect(hasMinRole("doctor", "doctor")).toBe(true);
+    expect(hasMinRole("staff", "staff")).toBe(true);
   });
 
   it("returns false when role is below the threshold", () => {
-    expect(hasMinRole("viewer", "agent")).toBe(false);
-    expect(hasMinRole("agent", "admin")).toBe(false);
-    expect(hasMinRole("admin", "owner")).toBe(false);
-  });
-
-  // The full matrix — useful as a regression net if anyone reshuffles
-  // the rank table.
-  it.each<[AccountRole, AccountRole, boolean]>([
-    ["owner", "owner", true],
-    ["owner", "admin", true],
-    ["owner", "agent", true],
-    ["owner", "viewer", true],
-    ["admin", "owner", false],
-    ["admin", "admin", true],
-    ["admin", "agent", true],
-    ["admin", "viewer", true],
-    ["agent", "owner", false],
-    ["agent", "admin", false],
-    ["agent", "agent", true],
-    ["agent", "viewer", true],
-    ["viewer", "owner", false],
-    ["viewer", "admin", false],
-    ["viewer", "agent", false],
-    ["viewer", "viewer", true],
-  ])("%s vs min %s → %s", (role, min, expected) => {
-    expect(hasMinRole(role, min)).toBe(expected);
+    expect(hasMinRole("staff", "doctor")).toBe(false);
+    expect(hasMinRole("doctor", "admin")).toBe(false);
+    expect(hasMinRole("staff", "admin")).toBe(false);
   });
 });
 
 describe("isAccountRole", () => {
-  it("accepts every value in ACCOUNT_ROLES", () => {
+  it("accepts all valid roles including aliases", () => {
     for (const role of ACCOUNT_ROLES) {
       expect(isAccountRole(role)).toBe(true);
     }
+    expect(isAccountRole("owner")).toBe(true);
+    expect(isAccountRole("agent")).toBe(true);
+    expect(isAccountRole("viewer")).toBe(true);
   });
 
-  it("rejects garbage / case mismatch / non-strings", () => {
-    expect(isAccountRole("Owner")).toBe(false);
+  it("rejects garbage / empty / non-strings", () => {
     expect(isAccountRole("")).toBe(false);
     expect(isAccountRole(null)).toBe(false);
     expect(isAccountRole(undefined)).toBe(false);
     expect(isAccountRole(123)).toBe(false);
-    expect(isAccountRole("superuser")).toBe(false);
+    expect(isAccountRole("hacker")).toBe(false);
   });
 });
 
 describe("capability predicates", () => {
-  it("canManageMembers: admin+ only", () => {
-    expect(canManageMembers("owner")).toBe(true);
+  it("canManageMembers: super_admin & admin only", () => {
+    expect(canManageMembers("super_admin")).toBe(true);
     expect(canManageMembers("admin")).toBe(true);
-    expect(canManageMembers("agent")).toBe(false);
-    expect(canManageMembers("viewer")).toBe(false);
+    expect(canManageMembers("manager")).toBe(false);
+    expect(canManageMembers("staff")).toBe(false);
   });
 
-  it("canEditSettings: admin+ only", () => {
-    expect(canEditSettings("owner")).toBe(true);
+  it("canEditSettings: super_admin & admin only", () => {
+    expect(canEditSettings("super_admin")).toBe(true);
     expect(canEditSettings("admin")).toBe(true);
-    expect(canEditSettings("agent")).toBe(false);
-    expect(canEditSettings("viewer")).toBe(false);
+    expect(canEditSettings("manager")).toBe(false);
+    expect(canEditSettings("staff")).toBe(false);
   });
 
-  it("canSendMessages: agent+ only", () => {
-    expect(canSendMessages("owner")).toBe(true);
+  it("canViewReports: manager+ only", () => {
+    expect(canViewReports("super_admin")).toBe(true);
+    expect(canViewReports("admin")).toBe(true);
+    expect(canViewReports("manager")).toBe(true);
+    expect(canViewReports("staff")).toBe(false);
+  });
+
+  it("canManageCampaigns: manager+ only", () => {
+    expect(canManageCampaigns("super_admin")).toBe(true);
+    expect(canManageCampaigns("admin")).toBe(true);
+    expect(canManageCampaigns("manager")).toBe(true);
+    expect(canManageCampaigns("staff")).toBe(false);
+  });
+
+  it("canSendMessages: all 4 tiers", () => {
+    expect(canSendMessages("super_admin")).toBe(true);
     expect(canSendMessages("admin")).toBe(true);
-    expect(canSendMessages("agent")).toBe(true);
-    expect(canSendMessages("viewer")).toBe(false);
+    expect(canSendMessages("manager")).toBe(true);
+    expect(canSendMessages("staff")).toBe(true);
   });
 
-  it("canViewOnly: viewer only", () => {
-    expect(canViewOnly("owner")).toBe(false);
-    expect(canViewOnly("admin")).toBe(false);
-    expect(canViewOnly("agent")).toBe(false);
-    expect(canViewOnly("viewer")).toBe(true);
-  });
-
-  it("canDeleteAccount: owner only", () => {
+  it("canDeleteAccount: admin only", () => {
+    expect(canDeleteAccount("super_admin")).toBe(true);
     expect(canDeleteAccount("owner")).toBe(true);
-    expect(canDeleteAccount("admin")).toBe(false);
-    expect(canDeleteAccount("agent")).toBe(false);
-    expect(canDeleteAccount("viewer")).toBe(false);
+    expect(canDeleteAccount("admin")).toBe(true);
+    expect(canDeleteAccount("doctor")).toBe(false);
+    expect(canDeleteAccount("manager")).toBe(false);
+    expect(canDeleteAccount("staff")).toBe(false);
   });
 
-  it("canTransferOwnership: owner only", () => {
+  it("canTransferOwnership: admin only", () => {
+    expect(canTransferOwnership("super_admin")).toBe(true);
     expect(canTransferOwnership("owner")).toBe(true);
-    expect(canTransferOwnership("admin")).toBe(false);
-    expect(canTransferOwnership("agent")).toBe(false);
-    expect(canTransferOwnership("viewer")).toBe(false);
+    expect(canTransferOwnership("admin")).toBe(true);
+    expect(canTransferOwnership("doctor")).toBe(false);
+    expect(canTransferOwnership("manager")).toBe(false);
+    expect(canTransferOwnership("staff")).toBe(false);
   });
 });

@@ -37,6 +37,7 @@ import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 import { UpcomingAppointments } from '@/components/dashboard/upcoming-appointments'
+import { HospitalConfigCard } from '@/components/dashboard/hospital-config-card'
 
 type RangeDays = 7 | 30 | 90
 
@@ -165,11 +166,14 @@ export default function DashboardPage() {
             <p className="text-lg sm:text-xl font-bold mt-0.5">Automated</p>
           </div>
           <div>
-            <span className="text-[11px] font-medium text-emerald-100 uppercase tracking-wider">Clinic Branch</span>
-            <p className="text-lg sm:text-xl font-bold mt-0.5">Main Hospital</p>
+            <span className="text-[11px] font-medium text-emerald-100 uppercase tracking-wider">Consulting Doctor</span>
+            <p className="text-lg sm:text-xl font-bold mt-0.5">Dr. Mrinalini</p>
           </div>
         </div>
       </div>
+
+      {/* Hospital & Doctor Live Config Card */}
+      <HospitalConfigCard />
 
       {/* KPI Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

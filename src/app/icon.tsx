@@ -22,21 +22,34 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#7c3aed", // primary (Hostinger-aligned purple)
-          borderRadius: 6,
+          background: "linear-gradient(135deg, #10b981 0%, #047857 100%)",
+          borderRadius: 8,
         }}
       >
         <svg
-          width="20"
-          height="20"
+          width="22"
+          height="22"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#ffffff"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
         >
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          {/* White WhatsApp Chat Bubble */}
+          <path
+            d="M12 2.5C6.75 2.5 2.5 6.75 2.5 12c0 1.77.49 3.42 1.34 4.84L2.5 21.5l4.82-1.27C8.69 21.05 10.3 21.5 12 21.5c5.25 0 9.5-4.25 9.5-9.5s-4.25-9.5-9.5-9.5z"
+            fill="#ffffff"
+          />
+          {/* Emerald Medical Cross */}
+          <path
+            d="M12 7.5v8"
+            stroke="#059669"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+          />
+          <path
+            d="M8 11.5h8"
+            stroke="#059669"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+          />
         </svg>
       </div>
     ),

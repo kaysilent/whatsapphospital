@@ -1,7 +1,6 @@
 import {
-  Crown,
   Shield,
-  UserCog,
+  Stethoscope,
   UserIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -11,41 +10,67 @@ import type { ChipVariant } from './settings-chip';
 
 /**
  * Single source of truth for per-role chip metadata across settings
- * surfaces (the Overview identity chip and the Members roster/invite
- * chips). Previously duplicated in both files; hoisted here so a label,
- * icon, or colour change lands once.
- *
- * `variant` drives the token-based <SettingsChip>; `className` is the
- * inline Tailwind string the Members tab applies to its own spans.
+ * surfaces (the Overview identity chip, header profile pill, and Members roster).
  */
 export const ROLE_META: Record<
   AccountRole,
-  { icon: LucideIcon; label: string; variant: ChipVariant; className: string }
+  { icon: LucideIcon; label: string; displayName: string; variant: ChipVariant; className: string }
 > = {
-  owner: {
-    icon: Crown,
-    label: 'owner',
-    variant: 'owner',
-    className: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-  },
   admin: {
     icon: Shield,
     label: 'admin',
+    displayName: 'Admin',
     variant: 'admin',
-    className: 'border-primary/40 bg-primary/10 text-primary',
+    className: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold',
+  },
+  doctor: {
+    icon: Stethoscope,
+    label: 'doctor',
+    displayName: 'Doctor',
+    variant: 'admin',
+    className: 'border-purple-500/40 bg-purple-500/10 text-purple-600 dark:text-purple-300 font-semibold',
+  },
+  staff: {
+    icon: UserIcon,
+    label: 'staff',
+    displayName: 'Staff',
+    variant: 'staff',
+    className: 'border-border bg-muted text-muted-foreground font-medium',
+  },
+  // Legacy aliases mapped to the 3 roles:
+  super_admin: {
+    icon: Shield,
+    label: 'admin',
+    displayName: 'Admin',
+    variant: 'admin',
+    className: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold',
+  },
+  owner: {
+    icon: Shield,
+    label: 'admin',
+    displayName: 'Admin',
+    variant: 'admin',
+    className: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold',
+  },
+  manager: {
+    icon: Stethoscope,
+    label: 'doctor',
+    displayName: 'Doctor',
+    variant: 'admin',
+    className: 'border-purple-500/40 bg-purple-500/10 text-purple-600 dark:text-purple-300 font-semibold',
   },
   agent: {
-    icon: UserCog,
-    label: 'agent',
-    variant: 'muted',
-    className: 'border-border bg-muted text-muted-foreground',
+    icon: UserIcon,
+    label: 'staff',
+    displayName: 'Staff',
+    variant: 'staff',
+    className: 'border-border bg-muted text-muted-foreground font-medium',
   },
   viewer: {
     icon: UserIcon,
-    label: 'viewer',
-    variant: 'muted',
-    // Outline-only so it stays quieter than the filled Agent chip in
-    // both modes — bg-card would blend into a card surface in light mode.
-    className: 'border-border bg-transparent text-muted-foreground',
+    label: 'staff',
+    displayName: 'Staff',
+    variant: 'staff',
+    className: 'border-border bg-transparent text-muted-foreground font-normal',
   },
 };

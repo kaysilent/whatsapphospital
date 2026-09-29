@@ -11,13 +11,26 @@ import { cn } from '@/lib/utils';
  * are semantic accents, not neutrals, so they're intentionally not
  * tokenized. Neutrals stay on design tokens.
  */
-export type ChipVariant = 'owner' | 'admin' | 'ok' | 'warn' | 'muted';
+export type ChipVariant =
+  | 'super_admin'
+  | 'owner'
+  | 'admin'
+  | 'manager'
+  | 'staff'
+  | 'ok'
+  | 'warn'
+  | 'info'
+  | 'muted';
 
 const VARIANTS: Record<ChipVariant, string> = {
+  super_admin: 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300',
   owner: 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300',
-  admin: 'border-primary-soft-2 bg-primary-soft text-primary',
+  admin: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  manager: 'border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400',
+  staff: 'border-border bg-muted text-muted-foreground',
   ok: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
   warn: 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300',
+  info: 'border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400',
   muted: 'border-border bg-muted text-muted-foreground',
 };
 

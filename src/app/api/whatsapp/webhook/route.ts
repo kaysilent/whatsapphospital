@@ -7,10 +7,19 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
+import { generateAIChatResponse } from '@/lib/ai/generate-reply'
+import { engineSendText } from '@/lib/automations/meta-send'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import {
+  detectEmergencyKeywords,
+  formatDoctorEmergencyAlert,
+  formatPatientEmergencyAutoReply,
+  formatDoctorRelayedMessageToPatient,
+  formatDoctorDeliveryConfirmation,
+} from '@/lib/whatsapp/emergency-relay'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -775,6 +784,201 @@ async function processMessage(
         interactive_reply_id: interactiveReplyId ?? undefined,
       },
     }).catch((err) => console.error('[automations] dispatch failed:', err))
+  }
+
+  // 1. DOCTOR EMERGENCY RELAY CHECK:
+  // If the sender is a Doctor responding to an active emergency session, forward to patient
+  if (inboundText) {
+    try {
+      const { data: activeEmergency } = await supabaseAdmin()
+        .from('emergency_relay_sessions')
+        .select('*')
+        .eq('doctor_phone', senderPhone)
+        .in('status', ['ACTIVE', 'DOCTOR_ALERTED', 'DOCTOR_REPLIED'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (activeEmergency) {
+        const doctorRelayMsg = formatDoctorRelayedMessageToPatient(activeEmergency.doctor_name, inboundText)
+
+        // Forward doctor message directly to the patient's WhatsApp conversation
+        await engineSendText({
+          accountId: activeEmergency.account_id || accountId,
+          userId: configOwnerUserId,
+          conversationId: activeEmergency.conversation_id,
+          contactId: activeEmergency.contact_id,
+          text: doctorRelayMsg,
+        }).catch((err) => console.warn('[Emergency Doctor Relay to Patient Error]:', err?.message))
+
+        // Update emergency session status in CRM
+        await supabaseAdmin()
+          .from('emergency_relay_sessions')
+          .update({
+            status: 'DOCTOR_REPLIED',
+            doctor_replies_count: (activeEmergency.doctor_replies_count || 0) + 1,
+            last_doctor_reply_text: inboundText,
+            last_doctor_reply_at: new Date().toISOString()
+          })
+          .eq('id', activeEmergency.id)
+
+        // Send delivery receipt back to the doctor
+        const confirmationText = formatDoctorDeliveryConfirmation(activeEmergency.patient_name, activeEmergency.patient_phone)
+        await engineSendText({
+          accountId,
+          userId: 'system',
+          conversationId: conversation.id,
+          contactId: contactRecord.id,
+          text: confirmationText,
+        }).catch(() => {})
+
+        console.info(`[DOCTOR EMERGENCY RELAY DELIVERED] Forwarded reply from ${activeEmergency.doctor_name} to ${activeEmergency.patient_phone}`)
+        return
+      }
+    } catch (relayErr) {
+      console.error('[Emergency Relay Webhook Check Error]:', relayErr)
+    }
+  }
+
+  // 2. PATIENT EMERGENCY DETECTION:
+  // If the patient message describes an acute emergency, alert the doctor on WhatsApp immediately
+  const emergencyCheck = detectEmergencyKeywords(inboundText)
+  if (emergencyCheck.isEmergency) {
+    try {
+      const doctorPhone = process.env.DOCTOR_EMERGENCY_PHONE || '+919876500001'
+      const doctorName = 'Dr. Ananya Sharma'
+
+      // Retrieve patient treatment/sitting history if available
+      const { data: latestAppt } = await supabaseAdmin()
+        .from('appointments')
+        .select('department, sitting, current_sitting, total_sittings')
+        .eq('phone_number', senderPhone)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const sittingInfo = latestAppt ? (latestAppt.sitting || `Sitting ${latestAppt.current_sitting || 1} of ${latestAppt.total_sittings || 1}`) : undefined
+      const department = latestAppt?.department || 'Aesthetic Dermatology / Urgent Care'
+
+      // 2.1 Send immediate reassuring triage message to Patient
+      const patientTriageMsg = formatPatientEmergencyAutoReply(doctorName)
+      await engineSendText({
+        accountId,
+        userId: 'system',
+        conversationId: conversation.id,
+        contactId: contactRecord.id,
+        text: patientTriageMsg,
+      }).catch((err) => console.warn('[Emergency Patient Triage Send Notice]:', err?.message))
+
+      // 2.2 Format Doctor Emergency WhatsApp Alert
+      const doctorAlertText = formatDoctorEmergencyAlert({
+        patientName: contactName || contactRecord.full_name || 'Patient',
+        patientPhone: senderPhone,
+        department: department,
+        sittingInfo: sittingInfo,
+        messageText: inboundText,
+        reason: emergencyCheck.reason,
+        doctorName: doctorName
+      })
+
+      // 2.3 Record emergency relay session in database
+      await supabaseAdmin()
+        .from('emergency_relay_sessions')
+        .insert({
+          account_id: accountId,
+          conversation_id: conversation.id,
+          contact_id: contactRecord.id,
+          patient_name: contactName || contactRecord.full_name || 'Patient',
+          patient_phone: senderPhone,
+          doctor_name: doctorName,
+          doctor_phone: doctorPhone,
+          department: department,
+          severity: emergencyCheck.severity,
+          emergency_text: inboundText,
+          status: 'DOCTOR_ALERTED'
+        })
+        .catch((err: any) => console.warn('[Emergency Session Insert Notice]:', err?.message))
+
+      console.info(`[EMERGENCY TRIGGERED] Alerting ${doctorName} (${doctorPhone}) for patient ${senderPhone}: "${inboundText}"`)
+      
+      // Dispatch public webhook event
+      await dispatchWebhookEvent(supabaseAdmin(), accountId, 'message.received', {
+        conversation_id: conversation.id,
+        contact_id: contactRecord.id,
+        whatsapp_message_id: message.id,
+        content_type: contentType,
+        text: contentText,
+        is_emergency: true
+      })
+      return
+    } catch (emErr) {
+      console.error('[Patient Emergency Workflow Error]:', emErr)
+    }
+  }
+
+  // 3. AI Receptionist Auto-Reply: Responds to standard patient WhatsApp inquiries
+  if (inboundText && !conversation.ai_autoreply_disabled) {
+    try {
+      const { data: pastMsgs } = await supabaseAdmin()
+        .from('messages')
+        .select('sender_type, content_text')
+        .eq('conversation_id', conversation.id)
+        .order('created_at', { ascending: false })
+        .limit(6)
+
+      const rawHistory = (pastMsgs || [])
+        .reverse()
+        .map((m: any) => ({
+          role: m.sender_type === 'customer' ? 'user' : 'ai',
+          content: m.content_text || ''
+        }))
+        .filter((h: any) => h.content)
+
+      // Exclude trailing user message if it matches inboundText
+      const history = rawHistory.length > 0 && 
+        rawHistory[rawHistory.length - 1].role === 'user' && 
+        rawHistory[rawHistory.length - 1].content.trim().toLowerCase() === (inboundText || '').trim().toLowerCase()
+          ? rawHistory.slice(0, -1)
+          : rawHistory;
+
+      const aiResult = await generateAIChatResponse({
+        message: inboundText,
+        conversationHistory: history,
+      })
+
+      if (aiResult.reply) {
+        await engineSendText({
+          accountId,
+          userId: 'system',
+          conversationId: conversation.id,
+          contactId: contactRecord.id,
+          text: aiResult.reply,
+        }).catch((err) => console.warn('[AI WhatsApp Reply send notice]:', err?.message))
+
+        // Record appointment if detected
+        if (aiResult.isAppointmentCard && aiResult.appointmentData) {
+          await supabaseAdmin()
+            .from('appointments')
+            .insert({
+              account_id: accountId,
+              patient_name: aiResult.appointmentData.patient_name,
+              phone_number: aiResult.appointmentData.phone_number,
+              date: aiResult.appointmentData.date,
+              time: aiResult.appointmentData.time,
+              department: aiResult.appointmentData.department,
+              current_sitting: aiResult.appointmentData.current_sitting || 1,
+              total_sittings: aiResult.appointmentData.total_sittings || 1,
+              sitting_interval: aiResult.appointmentData.sitting_interval || '4-6 weeks',
+              sitting_interval_days: aiResult.appointmentData.sitting_interval_days || 28,
+              sitting: aiResult.appointmentData.sitting,
+              status: 'Confirmed (AI)'
+            })
+            .catch((err: any) => console.warn('[AI Appointment Insert Notice]:', err?.message))
+        }
+      }
+    } catch (aiErr) {
+      console.error('[AI Auto-Reply Webhook Error]:', aiErr)
+    }
   }
 
   // message.received webhook (public API). Awaited — not fire-and-forget

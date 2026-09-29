@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isSafeUrl } from '@/lib/security/ssrf-guard';
 
 export const runtime = 'nodejs';
 
@@ -63,21 +64,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(url.startsWith('http') ? url : `https://${url}`);
-    } catch {
+    // SSRF Security Validation
+    const urlValidation = isSafeUrl(url);
+    if (!urlValidation.safe || !urlValidation.url) {
       return NextResponse.json(
-        { error: 'Invalid URL format. Please include http:// or https://' },
-        { status: 400 }
+        { error: `Blocked for security: ${urlValidation.reason || 'Invalid or forbidden URL'}` },
+        { status: 403 }
       );
     }
 
+    const parsedUrl = urlValidation.url;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
 
     const response = await fetch(parsedUrl.toString(), {
       signal: controller.signal,
+      redirect: 'follow',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 WACRM-Bot/1.0',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -87,6 +89,17 @@ export async function POST(req: NextRequest) {
 
     clearTimeout(timeout);
 
+    // Verify final destination after redirects is also safe
+    if (response.url) {
+      const finalCheck = isSafeUrl(response.url);
+      if (!finalCheck.safe) {
+        return NextResponse.json(
+          { error: 'Redirected to forbidden or internal URL' },
+          { status: 403 }
+        );
+      }
+    }
+
     if (!response.ok) {
       return NextResponse.json(
         { error: `Failed to fetch URL: HTTP ${response.status} ${response.statusText}` },
@@ -94,8 +107,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Read and enforce size limit (max 5 MB)
     const html = await response.text();
-    const { title, text } = stripHtml(html);
+    const { title, text } = stripHtml(html.slice(0, 5000000));
 
     // Limit text to first 30,000 chars for efficient indexing
     const truncatedText = text.slice(0, 30000);

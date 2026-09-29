@@ -1,19 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { syncServerAIConfigFromDatabase, getGlobalServerAIConfig } from '@/lib/ai/generate-reply';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
-    const { provider, apiKey, model, customBaseUrl } = await req.json();
+    const body = await req.json();
+    let { provider, apiKey, model, customBaseUrl } = body;
 
-    if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+    let cleanKey = (apiKey && typeof apiKey === 'string' && apiKey !== 'USE_SERVER_SAVED_KEY')
+      ? apiKey.trim()
+      : '';
+
+    let activeProvider = provider;
+    let activeModel = model;
+
+    if (!cleanKey) {
+      const serverConfig = await syncServerAIConfigFromDatabase();
+      cleanKey = serverConfig.apiKey || '';
+      if (!activeProvider) activeProvider = serverConfig.provider;
+      if (!activeModel) activeModel = serverConfig.model;
+      if (!customBaseUrl) customBaseUrl = serverConfig.customBaseUrl;
+    }
+
+    if (!cleanKey) {
       return NextResponse.json(
-        { error: 'Please enter a valid API key to test.' },
+        { error: 'No API key provided or found in the online database. Please enter an API key.' },
         { status: 400 }
       );
     }
 
-    const cleanKey = apiKey.trim();
+    provider = activeProvider || 'gemini';
+    model = activeModel;
+
     const startTime = Date.now();
 
     // 1. GOOGLE GEMINI TEST

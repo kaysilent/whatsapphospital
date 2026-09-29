@@ -1284,6 +1284,7 @@
       "dialogDesc": "일회용 초대 링크를 생성합니다. WhatsApp, Slack 등 원하는 채널로 공유하세요 — 이메일 서비스가 필요하지 않습니다.",
       "roleLabel": "역할",
       "validForLabel": "링크 유효 기간",
+      "validForHint": "초대 링크는 이 기간 후 만료됩니다. 팀원이 수락하고 참여하면 계정 접근 권한은 영구적입니다.",
       "days1": "1일",
       "days7": "7일",
       "days30": "30일",
@@ -1518,6 +1519,8 @@
     },
     "sections": {
       "overview": "개요",
+      "hospital": "병원 정보 & 시술",
+      "payments": "결제 게이트웨이",
       "profile": "내 프로필",
       "security": "로그인 & 보안",
       "appearance": "화면 설정",
@@ -1532,10 +1535,22 @@
       "knowledge": "지식 베이스"
     },
     "roles": {
-      "owner": "소유자",
       "admin": "관리자",
-      "agent": "상담원",
-      "viewer": "조회자"
+      "adminHint": "병원, 팀, 설정 및 WhatsApp/AI 설정 전체 관리",
+      "doctor": "의사",
+      "doctorHint": "환자 진료, 다회차 예약, 응급 연결 및 임상 보고서",
+      "staff": "스태프",
+      "staffHint": "환자 상담, 예약 접수 및 문의 분류",
+      "super_admin": "관리자",
+      "super_adminHint": "병원, 팀, 설정 및 WhatsApp/AI 설정 전체 관리",
+      "manager": "의사",
+      "managerHint": "환자 진료, 다회차 예약, 응급 연결 및 임상 보고서",
+      "owner": "관리자",
+      "ownerHint": "병원, 팀, 설정 및 WhatsApp/AI 설정 전체 관리",
+      "agent": "의사",
+      "agentHint": "환자 진료, 다회차 예약, 응급 연결 및 임상 보고서",
+      "viewer": "스태프",
+      "viewerHint": "환자 상담, 예약 접수 및 문의 분류"
     },
     "groups": {
       "account": "계정",

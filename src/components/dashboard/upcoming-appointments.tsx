@@ -72,6 +72,14 @@ export function UpcomingAppointments() {
                       </span>
                       <span>•</span>
                       <span className="text-primary font-medium">{appt.department}</span>
+                      {appt.total_sittings && appt.total_sittings > 1 && (
+                        <>
+                          <span>•</span>
+                          <span className="rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 px-1 py-0.2 font-semibold text-[9.5px]">
+                            {appt.sitting || `Sitting ${appt.current_sitting || 1}/${appt.total_sittings}`}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

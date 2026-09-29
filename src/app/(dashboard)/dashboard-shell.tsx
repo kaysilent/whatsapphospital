@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { Sidebar } from "@/components/layout/sidebar";
+import { EmergencyAlarmBanner } from "@/components/emergency/EmergencyAlarmBanner";
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -58,6 +59,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
       {/* Main Content Area */}
       <div className="flex flex-1 flex-col overflow-hidden w-full min-w-0">
+        <EmergencyAlarmBanner />
         <Header onOpenSidebar={() => setMobileMenuOpen(true)} />
         
         <main className="flex-1 overflow-y-auto w-full">

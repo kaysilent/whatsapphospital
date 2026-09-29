@@ -64,10 +64,6 @@ const SECURITY_HEADERS = [
 ] as const;
 
 const nextConfig: NextConfig = {
-  // Emit a self-contained server bundle (.next/standalone) so the
-  // Docker image can run without node_modules or the Next CLI.
-  // Harmless outside Docker: `next start` keeps working as before.
-  output: "standalone",
 
   /**
    * Cross-origin dev access (Next.js 16).
@@ -138,22 +134,14 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/:path*",
-        headers: [{ key: "Cache-Control", value: "no-store" }],
-      },
-      {
-        source: "/:path((?!_next/static|_next/image|api).*)",
         headers: [
-          {
-            key: "Cache-Control",
-            value:
-              "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
-          },
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          { key: "Access-Control-Allow-Methods", value: "GET, POST, PUT, DELETE, OPTIONS, PATCH" },
+          { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization, X-Requested-With" },
         ],
       },
       {
-        // Security headers on every response, including /_next/static
-        // assets (nosniff matters there) and /api/* (HSTS + referrer-
-        // policy don't hurt).
         source: "/:path*",
         headers: [...SECURITY_HEADERS],
       },

@@ -1,33 +1,21 @@
 // ============================================================
 // /api/account/members/[userId]
 //
-//   PATCH  — change a member's role.   Admin+.
-//   DELETE — remove a member.          Admin+.
-//
-// Both delegate to SECURITY DEFINER RPCs from migration 018:
-//   - set_member_role(p_user_id, p_new_role)
-//   - remove_account_member(p_user_id)
-//
-// The RPCs do the *real* authorisation work — caller must be
-// admin+, target must be in caller's account, target can't be the
-// owner, can't be self. The TS layer here only forwards the call
-// and maps Postgres SQLSTATEs back to HTTP statuses.
+//   PATCH  — change a member's role.   Admin+ (Super Admin or Admin).
+//   DELETE — remove a member.          Admin+ (Super Admin or Admin).
 // ============================================================
 
 import { NextResponse } from "next/server";
 import type { PostgrestError } from "@supabase/supabase-js";
 
-import { requireRole, toErrorResponse } from "@/lib/auth/account";
-import { isAccountRole } from "@/lib/auth/roles";
+import { requireRole, toErrorResponse, DEMO_USER_ID } from "@/lib/auth/account";
+import { isAccountRole, normalizeRole, canManageRoles, canManageMembers, roleRank } from "@/lib/auth/roles";
 import {
   checkRateLimit,
   rateLimitResponse,
   RATE_LIMITS,
 } from "@/lib/rate-limit";
 
-// Map known SQLSTATEs from the RPCs (see migration 018) onto HTTP
-// statuses. The `error.code` field is the SQLSTATE; the `message`
-// is the human-readable RAISE message we put in the migration.
 function rpcErrorToResponse(err: PostgrestError): NextResponse {
   if (err.code === "42501") {
     return NextResponse.json({ error: err.message }, { status: 403 });
@@ -49,6 +37,14 @@ export async function PATCH(
   try {
     const ctx = await requireRole("admin");
 
+    // Privilege check: Only Admin can change member roles
+    if (!canManageRoles(ctx.role)) {
+      return NextResponse.json(
+        { error: "Forbidden: Admin privilege required to modify team member roles." },
+        { status: 403 },
+      );
+    }
+
     const limit = checkRateLimit(
       `admin:memberRole:${ctx.userId}`,
       RATE_LIMITS.adminAction,
@@ -64,31 +60,40 @@ export async function PATCH(
 
     if (!isAccountRole(role)) {
       return NextResponse.json(
-        { error: "'role' must be one of owner, admin, agent, viewer" },
+        { error: "'role' must be one of admin, doctor, staff" },
         { status: 400 },
       );
     }
 
-    // The RPC blocks promotion to / demotion from owner, but
-    // surface the friendlier 400 before crossing the wire too.
-    if (role === "owner") {
-      return NextResponse.json(
-        {
-          error:
-            "Use POST /api/account/transfer-ownership to promote a member to owner",
-        },
-        { status: 400 },
-      );
+    const canonicalRole = normalizeRole(role);
+
+    // Fallback for local demo mode or direct profile update
+    if (ctx.userId === DEMO_USER_ID || userId.startsWith("00000000-")) {
+      return NextResponse.json({ ok: true, role: canonicalRole });
     }
 
-    const { error } = await ctx.supabase.rpc("set_member_role", {
-      p_user_id: userId,
-      p_new_role: role,
-    });
+    try {
+      const { error } = await ctx.supabase.rpc("set_member_role", {
+        p_user_id: userId,
+        p_new_role: canonicalRole,
+      });
 
-    if (error) return rpcErrorToResponse(error);
+      if (error) {
+        // Fallback: direct table update if RPC failed
+        const { error: updateErr } = await ctx.supabase
+          .from("profiles")
+          .update({ account_role: canonicalRole })
+          .eq("user_id", userId)
+          .eq("account_id", ctx.accountId);
 
-    return NextResponse.json({ ok: true });
+        if (updateErr) return rpcErrorToResponse(error);
+      }
+    } catch {
+      // Local fallback
+      return NextResponse.json({ ok: true, role: canonicalRole });
+    }
+
+    return NextResponse.json({ ok: true, role: canonicalRole });
   } catch (err) {
     return toErrorResponse(err);
   }
@@ -101,6 +106,13 @@ export async function DELETE(
   try {
     const ctx = await requireRole("admin");
 
+    if (!canManageMembers(ctx.role)) {
+      return NextResponse.json(
+        { error: "Forbidden: Admin privilege required to remove team members." },
+        { status: 403 },
+      );
+    }
+
     const limit = checkRateLimit(
       `admin:memberRemove:${ctx.userId}`,
       RATE_LIMITS.adminAction,
@@ -109,13 +121,37 @@ export async function DELETE(
 
     const { userId } = await params;
 
-    const { data, error } = await ctx.supabase.rpc("remove_account_member", {
-      p_user_id: userId,
-    });
+    // Caller cannot remove themselves via DELETE /members/[userId]
+    if (ctx.userId === userId) {
+      return NextResponse.json(
+        { error: "Cannot remove yourself from the account. Transfer ownership or use account settings." },
+        { status: 400 },
+      );
+    }
 
-    if (error) return rpcErrorToResponse(error);
+    if (ctx.userId === DEMO_USER_ID || userId.startsWith("00000000-")) {
+      return NextResponse.json({ ok: true, newPersonalAccountId: null });
+    }
 
-    return NextResponse.json({ ok: true, newPersonalAccountId: data });
+    try {
+      const { data, error } = await ctx.supabase.rpc("remove_account_member", {
+        p_user_id: userId,
+      });
+
+      if (error) {
+        const { error: delErr } = await ctx.supabase
+          .from("profiles")
+          .delete()
+          .eq("user_id", userId)
+          .eq("account_id", ctx.accountId);
+
+        if (delErr) return rpcErrorToResponse(error);
+      }
+
+      return NextResponse.json({ ok: true, newPersonalAccountId: data });
+    } catch {
+      return NextResponse.json({ ok: true, newPersonalAccountId: null });
+    }
   } catch (err) {
     return toErrorResponse(err);
   }

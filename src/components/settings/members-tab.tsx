@@ -87,17 +87,16 @@ interface Member {
 
 interface Invitation {
   id: string;
-  role: 'admin' | 'agent' | 'viewer';
+  role: 'admin' | 'doctor' | 'staff' | 'manager' | 'agent' | 'viewer';
   label: string | null;
   created_at: string;
   expires_at: string;
 }
 
-// These roles are translated via `useTranslations("Settings.roles")` where they are used.
 const EDITABLE_ROLES: { value: AccountRole }[] = [
   { value: 'admin' },
-  { value: 'agent' },
-  { value: 'viewer' },
+  { value: 'doctor' },
+  { value: 'staff' },
 ];
 
 // Per-role chip metadata (icon / label / colour) lives in the shared
@@ -127,7 +126,7 @@ function fmtExpiresIn(iso: string, t: (key: string, values?: Record<string, stri
 export function MembersTab() {
   const t = useTranslations('Settings.members');
   const tRoles = useTranslations('Settings.roles');
-  const { user, canManageMembers } = useAuth();
+  const { user, canManageMembers, canManageRoles } = useAuth();
   const { getPresence, getRow, now } = usePresence();
 
   const [members, setMembers] = useState<Member[]>([]);
@@ -326,10 +325,10 @@ export function MembersTab() {
         <CardContent className="p-0">
           <ul className="divide-y divide-border">
             {members.map((member) => {
-              const roleMeta = ROLE_META[member.role];
+              const roleMeta = ROLE_META[member.role] || ROLE_META.staff;
               const RoleIcon = roleMeta.icon;
               const isSelf = member.user_id === user?.id;
-              const isOwnerRow = member.role === 'owner';
+              const isOwnerRow = member.role === 'super_admin' || member.role === 'owner';
               const isBusy = pendingMemberAction === member.user_id;
               const presence = getPresence(member.user_id);
               const presenceRow = getRow(member.user_id);
@@ -410,17 +409,11 @@ export function MembersTab() {
                       inline. Items align to the start on mobile so the
                       role dropdown lines up under the avatar. */}
                   <div className="flex items-center gap-2 sm:gap-3">
-                    {/* Role display / editor. Inline Select is admin+
-                        only AND not allowed on the owner row (owner
-                        changes go through transfer, which lands later). */}
-                    {canManageMembers && !isOwnerRow && !isSelf ? (
+                    {/* Role display / editor. Inline Select is super_admin only AND not allowed on the owner row */}
+                    {canManageRoles && !isOwnerRow && !isSelf ? (
                       <Select
                         value={member.role}
                         onValueChange={(v) =>
-                          // Base UI Select can emit null on clear. We
-                          // don't expose a clear affordance, so the
-                          // guard is defensive — but the typed
-                          // signature requires it.
                           v && handleRoleChange(member, v as AccountRole)
                         }
                       >

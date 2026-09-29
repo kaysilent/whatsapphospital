@@ -22,7 +22,10 @@ import {
   AlertCircle, 
   Sliders, 
   Server,
-  Layers
+  Layers,
+  Cloud,
+  Database,
+  ShieldCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -147,18 +150,38 @@ export function LlmConfigPanel() {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; responseTime?: number } | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [maskedServerKey, setMaskedServerKey] = useState<string | null>(null);
+  const [cloudLoaded, setCloudLoaded] = useState(false);
 
-  // Sync from props
+  // Fetch online saved configuration from Supabase DB on mount
   useEffect(() => {
-    if (llmConfig) {
+    fetch('/api/ai/config')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && (data.isConfigured || data.hasApiKey)) {
+          if (data.provider) setProvider(data.provider);
+          if (data.model) setModel(data.model);
+          if (data.customBaseUrl) setCustomBaseUrl(data.customBaseUrl);
+          if (typeof data.temperature === 'number') setTemperature(data.temperature);
+          if (typeof data.maxTokens === 'number') setMaxTokens(data.maxTokens);
+          if (data.maskedApiKey) setMaskedServerKey(data.maskedApiKey);
+          setCloudLoaded(true);
+        }
+      })
+      .catch((err) => console.warn('[AI Config Fetch Error]:', err));
+  }, []);
+
+  // Sync from props if local changes occur
+  useEffect(() => {
+    if (llmConfig && !cloudLoaded) {
       setProvider(llmConfig.provider || 'gemini');
-      setApiKey(llmConfig.apiKey || '');
+      if (llmConfig.apiKey) setApiKey(llmConfig.apiKey);
       setModel(llmConfig.model || 'gemini-2.5-flash');
       setCustomBaseUrl(llmConfig.customBaseUrl || 'http://localhost:11434/v1');
       setTemperature(llmConfig.temperature ?? 0.7);
       setMaxTokens(llmConfig.maxTokens ?? 1024);
     }
-  }, [llmConfig]);
+  }, [llmConfig, cloudLoaded]);
 
   const activeMeta = PROVIDERS.find(p => p.id === provider) || PROVIDERS[0];
 
@@ -170,7 +193,8 @@ export function LlmConfigPanel() {
   };
 
   const handleTestConnection = async () => {
-    if (!apiKey.trim()) {
+    const keyToTest = apiKey.trim() || (maskedServerKey ? 'USE_SERVER_SAVED_KEY' : '');
+    if (!keyToTest) {
       setTestResult({
         success: false,
         message: 'Please enter an API Key first before testing the connection.'
@@ -217,7 +241,8 @@ export function LlmConfigPanel() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    const isConfiguredNow = !!(apiKey.trim() || maskedServerKey);
     const updated: Partial<LLMConfig> = {
       provider,
       apiKey: apiKey.trim(),
@@ -225,10 +250,29 @@ export function LlmConfigPanel() {
       customBaseUrl: provider === 'custom' ? customBaseUrl.trim() : undefined,
       temperature,
       maxTokens,
-      isConfigured: !!apiKey.trim()
+      isConfigured: isConfiguredNow
     };
 
     setLLMConfig(updated);
+
+    // Synchronize to Supabase DB & Server so all devices share the same AI engine & API key permanently
+    try {
+      const res = await fetch('/api/ai/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (apiKey.trim()) {
+          const keyStr = apiKey.trim();
+          setMaskedServerKey(keyStr.length > 10 ? `${keyStr.slice(0, 6)}••••••••${keyStr.slice(-4)}` : '••••••••••••');
+        }
+      }
+    } catch (e) {
+      console.warn('[Server AI Config Sync Notice]:', e);
+    }
+
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
   };
@@ -252,18 +296,18 @@ export function LlmConfigPanel() {
           <div className="flex items-center gap-2">
             <Cpu className="h-5 w-5 text-primary" />
             <h4 className="text-base font-semibold text-foreground">LLM Provider & API Key Manager</h4>
-            {llmConfig.isConfigured ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                <Check className="h-3 w-3" /> Configured & Active
+            {maskedServerKey || llmConfig.isConfigured ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                <Cloud className="h-3 w-3" /> Cloud Synced & Active
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
                 Using Built-in Presets
               </span>
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Choose your AI engine and enter your LLM API Key (Google Gemini, OpenAI, Claude, Groq, or Custom Endpoint).
+            Choose your AI engine and enter your LLM API Key. Once saved, it is encrypted and persisted in your online database across all devices and team accounts.
           </p>
         </div>
 
@@ -280,6 +324,19 @@ export function LlmConfigPanel() {
           </Button>
         </div>
       </div>
+
+      {/* Cloud Sync Status Banner if saved in DB */}
+      {maskedServerKey && (
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-emerald-700 dark:text-emerald-300">
+          <div className="flex items-center gap-2 font-medium">
+            <Database className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>Online Database Config Active: <strong>{activeMeta.name}</strong> with key <code>{maskedServerKey}</code></span>
+          </div>
+          <span className="text-[10px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded">
+            All Devices Connected
+          </span>
+        </div>
+      )}
 
       {/* 1. Provider Cards Grid */}
       <div className="space-y-2">
@@ -356,7 +413,7 @@ export function LlmConfigPanel() {
                 setApiKey(e.target.value);
                 setTestResult(null);
               }}
-              placeholder={activeMeta.keyPlaceholder}
+              placeholder={maskedServerKey ? `Active Database Key: ${maskedServerKey} (Enter new key to change)` : activeMeta.keyPlaceholder}
               className="pr-20 font-mono text-xs bg-background h-10 border-border"
             />
             <div className="absolute right-1.5 flex items-center gap-1">
@@ -372,9 +429,19 @@ export function LlmConfigPanel() {
               </Button>
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            Your key is safely stored locally in browser storage and only transmitted securely over HTTPS directly to the AI provider.
-          </p>
+
+          {maskedServerKey && !apiKey && (
+            <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium pt-0.5">
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+              <span>Key is stored securely online in Supabase (AES-256 encrypted). Leave empty to preserve current key or type a new key to update.</span>
+            </div>
+          )}
+
+          {!maskedServerKey && !apiKey && (
+            <p className="text-[11px] text-muted-foreground">
+              Your key will be encrypted and saved to your Supabase online database so all hospital devices use this key automatically.
+            </p>
+          )}
         </div>
 
         {/* Custom Endpoint URL (if Custom provider) */}
@@ -523,7 +590,7 @@ export function LlmConfigPanel() {
             type="button"
             variant="outline"
             onClick={handleTestConnection}
-            disabled={isTesting || !apiKey.trim()}
+            disabled={isTesting || (!apiKey.trim() && !maskedServerKey)}
             className="h-9 px-4 text-xs font-semibold gap-1.5 flex-1 sm:flex-none border-primary/30 text-primary hover:bg-primary/10"
           >
             {isTesting ? (

@@ -1,0 +1,136 @@
+{
+  "pages": [
+    {
+      "path": "/",
+      "name": "Landing Page",
+      "status": 200,
+      "latency_ms": 654.0,
+      "passed": true,
+      "error": null
+    },
+    {
+      "path": "/login",
+      "name": "Authentication Login Page",
+      "status": 200,
+      "latency_ms": 388.7,
+      "passed": true,
+      "error": null
+    },
+    {
+      "path": "/demo",
+      "name": "WhatsApp AI Simulator / Demo",
+      "status": 200,
+      "latency_ms": 296.4,
+      "passed": true,
+      "error": null
+    },
+    {
+      "path": "/dashboard",
+      "name": "Admin Dashboard Analytics",
+      "status": 200,
+      "latency_ms": 645.5,
+      "passed": true,
+      "error": null
+    },
+    {
+      "path": "/appointments",
+      "name": "Appointments & Treatments",
+      "status": 200,
+      "latency_ms": 489.6,
+      "passed": true,
+      "error": null
+    },
+    {
+      "path": "/contacts",
+      "name": "Patient Contacts Directory",
+      "status": 200,
+      "latency_ms": 538.0,
+      "passed": true,
+      "error": null
+    },
+    {
+      "path": "/inbox",
+      "name": "Live WhatsApp Shared Inbox",
+      "status": 200,
+      "latency_ms": 465.6,
+      "passed": true,
+      "error": null
+    },
+    {
+      "path": "/automations",
+      "name": "Workflow Automations",
+      "status": 200,
+      "latency_ms": 1649.5,
+      "passed": true,
+      "error": null
+    },
+    {
+      "path": "/broadcasts",
+      "name": "Broadcast Campaigns",
+      "status": 200,
+      "latency_ms": 451.3,
+      "passed": true,
+      "error": null
+    },
+    {
+      "path": "/settings",
+      "name": "Hospital Settings & Doctor Configuration",
+      "status": 200,
+      "latency_ms": 572.5,
+      "passed": true,
+      "error": null
+    }
+  ],
+  "ai": [
+    {
+      "name": "General Dermatology Consultation / Doctor Verification",
+      "status": 200,
+      "latency_ms": 1860.8,
+      "reply": "La Fleur Aesthetic & Wellness Clinic\n\n\u2022 Chief Physician: Dr. Mrinalini (MD Dermatology, Senior Aesthetic Specialist)\n\u2022 Clinic Hours: Monday to Saturday, 10:00 AM - 07:00 PM\n\u2022 Sunday Timings: Closed\n\u2022 Address: Suite 402, Green Glen Towers, Bangalore\n\nAvailable slots today: 11:30 AM, 02:30 PM, 05:00 PM.\n\nAre you looking to book a skin or hair consultation with Dr. Mrinalini?",
+      "emojis_found": [],
+      "asked_phone": false,
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "Clinic Timings Inquiry",
+      "status": 200,
+      "latency_ms": 2040.9,
+      "reply": "La Fleur Aesthetic & Wellness Clinic Sunday Schedule:\n\n\u2022 Sunday Timings: Sunday: Closed\n\u2022 Consulting Doctor: Dr. Mrinalini (MD Dermatology)\n\u2022 Address: Suite 402, Green Glen Towers, Bangalore\n\nWould you like to reserve a Sunday appointment slot?",
+      "emojis_found": [],
+      "asked_phone": false,
+      "passed": false,
+      "error": null
+    },
+    {
+      "name": "Severe Anaphylaxis / Emergency Triage",
+      "status": 200,
+      "latency_ms": 1872.2,
+      "reply": "Emergency Notice:\n\nIf you are experiencing severe breathing difficulty, sudden swelling, or acute allergic reactions, please seek immediate emergency medical care at the nearest hospital emergency department or contact emergency medical services right away.\n\nFor non-emergency clinical dermatological consultations once you are medically stable, Dr. Mrinalini is available at La Fleur Clinic.",
+      "emojis_found": [],
+      "asked_phone": false,
+      "passed": true,
+      "error": null
+    },
+    {
+      "name": "Appointment Booking Request",
+      "status": 200,
+      "latency_ms": 1921.5,
+      "reply": "For Skin Tightening (RF / MNRF), our clinic follows an evidence-based clinical protocol:\n\n1. Digital 3D Dermascope Analysis with Dr. Mrinalini\n2. Structured Course: 4 sittings spaced 3-4 weeks apart for sustained results.\n3. Automated pre-care and post-care follow-up tracking.\n\nWould you like to schedule a consultation with Dr. Mrinalini?",
+      "emojis_found": [],
+      "asked_phone": false,
+      "passed": false,
+      "error": null
+    },
+    {
+      "name": "Phone Number Request Prohibition Check",
+      "status": 200,
+      "latency_ms": 1862.6,
+      "reply": "Our available consultation slots for Pigmentation & Chemical Peels with Dr. Mrinalini are:\n\u2022 10:30 AM\n\u2022 11:30 AM\n\u2022 02:30 PM\n\u2022 04:00 PM\n\u2022 05:30 PM\n\nWhich time slot would suit your schedule best?",
+      "emojis_found": [],
+      "asked_phone": false,
+      "passed": true,
+      "error": null
+    }
+  ]
+}

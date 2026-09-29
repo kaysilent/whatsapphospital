@@ -121,7 +121,7 @@ export function AiAgentPanel() {
               <h4 className="text-base font-semibold text-foreground">System Prompt (Active Persona)</h4>
               {isLaFleur ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-bold text-primary">
-                  🌸 La Fleur Clinic Mode
+                  La Fleur Clinic Mode
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400">

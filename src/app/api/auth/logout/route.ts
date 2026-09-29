@@ -9,30 +9,42 @@ export async function POST(_req: NextRequest) {
     const cookieStore = await cookies();
     const response = NextResponse.json({ success: true });
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) => {
-                cookieStore.set(name, value, options);
-                response.cookies.set(name, value, options);
-              });
-            } catch (err) {}
-          },
-        },
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      try {
+        const supabase = createServerClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          {
+            cookies: {
+              getAll() {
+                return cookieStore.getAll();
+              },
+              setAll(cookiesToSet) {
+                try {
+                  cookiesToSet.forEach(({ name, value, options }) => {
+                    cookieStore.set(name, value, options);
+                    response.cookies.set(name, value, options);
+                  });
+                } catch (err) {}
+              },
+            },
+          }
+        );
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('[API Auth Logout] Supabase signout notice:', err);
       }
-    );
+    }
 
-    await supabase.auth.signOut();
+    // Always clear demo session cookie
+    response.cookies.set('wacrm_demo_session', '', {
+      path: '/',
+      maxAge: 0,
+    });
 
-    return NextResponse.json({ success: true }, { headers: response.headers });
+    return response;
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to logout' }, { status: 500 });
   }
 }
+

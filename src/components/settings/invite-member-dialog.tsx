@@ -39,7 +39,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/hooks/use-auth';
 
-type InviteRole = 'admin' | 'agent' | 'viewer';
+type InviteRole = 'admin' | 'doctor' | 'staff';
 
 interface InviteMemberDialogProps {
   open: boolean;
@@ -77,14 +77,14 @@ export function InviteMemberDialog({
   const t = useTranslations('Settings.invite');
   const tRoles = useTranslations('Settings.roles');
   const { account } = useAuth();
-  const [role, setRole] = useState<InviteRole>('agent');
+  const [role, setRole] = useState<InviteRole>('staff');
   const [expiry, setExpiry] = useState<string>('7');
   const [label, setLabel] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreatedInvite | null>(null);
 
   function reset() {
-    setRole('agent');
+    setRole('staff');
     setExpiry('7');
     setLabel('');
     setResult(null);
@@ -278,13 +278,14 @@ export function InviteMemberDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="admin">{tRoles('admin')}</SelectItem>
-                    <SelectItem value="agent">{tRoles('agent')}</SelectItem>
-                    <SelectItem value="viewer">{tRoles('viewer')}</SelectItem>
+                    <SelectItem value="doctor">{tRoles('doctor')}</SelectItem>
+                    <SelectItem value="staff">{tRoles('staff')}</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {tRoles(`${role}Hint` as 'adminHint' | 'agentHint' | 'viewerHint')}
+                  {tRoles(`${role}Hint` as 'adminHint' | 'doctorHint' | 'staffHint')}
                 </p>
+
               </div>
 
               <div className="space-y-2">
@@ -304,7 +305,11 @@ export function InviteMemberDialog({
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t('validForHint')}
+                </p>
               </div>
+
 
               <div className="space-y-2">
                 <Label className="text-muted-foreground">

@@ -86,8 +86,8 @@ export interface AccountMember {
 export interface AccountInvitation {
   id: string;
   account_id: string;
-  /** Roles offered via invite — owner is never offered. */
-  role: Exclude<AccountRole, "owner">;
+  /** Roles offered via invite — master super_admin/owner is never offered via invite link. */
+  role: Exclude<AccountRole, "owner" | "super_admin">;
   created_by_user_id: string | null;
   label: string | null;
   created_at: string;

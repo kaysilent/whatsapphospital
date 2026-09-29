@@ -1,0 +1,5 @@
+﻿# Local Memory System Protocol
+- At the beginning of EVERY new task or session, read all files in the .memory/ directory before taking action.
+- When learning new user preferences, architectural rules, or repeatable patterns, update .memory/systemPatterns.md.
+- When finishing a task or making significant progress, document the changes, current blockers, and immediate next steps in .memory/activeContext.md.
+- Never commit sensitive secrets/keys into .memory/ files.

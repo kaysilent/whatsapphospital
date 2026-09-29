@@ -19,6 +19,8 @@ import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import { AiAgentPanel } from '@/components/settings/ai-agent-panel';
 import { KnowledgeBasePanel } from '@/components/settings/knowledge-base-panel';
+import { HospitalSettingsPanel } from '@/components/settings/hospital-settings-panel';
+import { PaymentGatewayPanel } from '@/components/settings/payment-gateway-panel';
 import {
   resolveSection,
   type SettingsSection,
@@ -74,6 +76,10 @@ function SettingsPageInner() {
     switch (sec) {
       case 'overview':
         return <SettingsOverview onSelect={go} />;
+      case 'hospital':
+        return <HospitalSettingsPanel />;
+      case 'payments':
+        return <PaymentGatewayPanel />;
       case 'profile':
         return <ProfileForm />;
       case 'security':

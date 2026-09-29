@@ -2,6 +2,113 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
+export interface TreatmentProtocol {
+  name: string;
+  totalSittings: number;
+  sittingInterval: string;
+  sittingIntervalDays: number;
+  defaultDoctor: string;
+  postCareFollowUpDays: number;
+  postCareGoal: string;
+  nextSittingGoal: string;
+}
+
+export const TREATMENT_PROTOCOLS: Record<string, TreatmentProtocol> = {
+  "Laser Hair Reduction": {
+    name: "Laser Hair Reduction",
+    totalSittings: 6,
+    sittingInterval: "4-6 weeks",
+    sittingIntervalDays: 28,
+    defaultDoctor: "Dr. Mrinalini",
+    postCareFollowUpDays: 2,
+    postCareGoal: "Post-laser soothing gel & skin tolerance check",
+    nextSittingGoal: "Sitting due reminder (hair growth cycle sync)"
+  },
+  "PRP Hair Therapy": {
+    name: "PRP Hair Therapy",
+    totalSittings: 4,
+    sittingInterval: "3-4 weeks",
+    sittingIntervalDays: 21,
+    defaultDoctor: "Dr. Mrinalini",
+    postCareFollowUpDays: 3,
+    postCareGoal: "Post-PRP scalp sensitivity & washing instructions check",
+    nextSittingGoal: "Session due reminder for follicular stimulation"
+  },
+  "Pigmentation & Chemical Peels": {
+    name: "Pigmentation & Chemical Peels",
+    totalSittings: 4,
+    sittingInterval: "2-3 weeks",
+    sittingIntervalDays: 14,
+    defaultDoctor: "Dr. Mrinalini",
+    postCareFollowUpDays: 2,
+    postCareGoal: "Post-peel flaking, hydration & SPF compliance review",
+    nextSittingGoal: "Next peel sitting due reminder"
+  },
+  "Skin Tightening (RF / MNRF)": {
+    name: "Skin Tightening (RF / MNRF)",
+    totalSittings: 4,
+    sittingInterval: "3-4 weeks",
+    sittingIntervalDays: 21,
+    defaultDoctor: "Dr. Mrinalini",
+    postCareFollowUpDays: 3,
+    postCareGoal: "Post-RF collagen stimulation & skin hydration check",
+    nextSittingGoal: "Next RF contouring sitting due reminder"
+  },
+  "HydraFacial Deluxe": {
+    name: "HydraFacial Deluxe",
+    totalSittings: 3,
+    sittingInterval: "4 weeks",
+    sittingIntervalDays: 28,
+    defaultDoctor: "Dr. Mrinalini",
+    postCareFollowUpDays: 1,
+    postCareGoal: "Post-HydraFacial radiance & moisture barrier check",
+    nextSittingGoal: "Monthly maintenance glow session due"
+  },
+  "Anti-Aging & Botox": {
+    name: "Anti-Aging & Botox",
+    totalSittings: 1,
+    sittingInterval: "2 weeks",
+    sittingIntervalDays: 14,
+    defaultDoctor: "Dr. Mrinalini",
+    postCareFollowUpDays: 7,
+    postCareGoal: "Day 7 Botox post-injection symmetry & effect review",
+    nextSittingGoal: "Day 14 touch-up consultation"
+  },
+  "General Aesthetic Consultation": {
+    name: "General Aesthetic Consultation",
+    totalSittings: 1,
+    sittingInterval: "As advised",
+    sittingIntervalDays: 30,
+    defaultDoctor: "Dr. Mrinalini",
+    postCareFollowUpDays: 2,
+    postCareGoal: "Post-consultation treatment plan & medication review",
+    nextSittingGoal: "Treatment commencement appointment"
+  }
+};
+
+export function getTreatmentProtocol(dept: string): TreatmentProtocol {
+  const lower = (dept || '').toLowerCase();
+  if (lower.includes('laser') || lower.includes('hair reduction')) {
+    return TREATMENT_PROTOCOLS["Laser Hair Reduction"];
+  }
+  if (lower.includes('prp') || lower.includes('scalp') || lower.includes('gfc')) {
+    return TREATMENT_PROTOCOLS["PRP Hair Therapy"];
+  }
+  if (lower.includes('peel') || lower.includes('pigment') || lower.includes('brightening')) {
+    return TREATMENT_PROTOCOLS["Pigmentation & Chemical Peels"];
+  }
+  if (lower.includes('tightening') || lower.includes('rf') || lower.includes('mnrf')) {
+    return TREATMENT_PROTOCOLS["Skin Tightening (RF / MNRF)"];
+  }
+  if (lower.includes('hydra') || lower.includes('facial') || lower.includes('glow')) {
+    return TREATMENT_PROTOCOLS["HydraFacial Deluxe"];
+  }
+  if (lower.includes('botox') || lower.includes('wrinkle') || lower.includes('anti-aging')) {
+    return TREATMENT_PROTOCOLS["Anti-Aging & Botox"];
+  }
+  return TREATMENT_PROTOCOLS["General Aesthetic Consultation"];
+}
+
 export type Appointment = {
   id: string;
   patient_name: string;
@@ -11,8 +118,36 @@ export type Appointment = {
   department: string;
   doctor?: string;
   status?: string;
+  current_sitting?: number;
+  total_sittings?: number;
+  sitting_interval?: string;
+  sitting_interval_days?: number;
   sitting?: string;
+  next_sitting_date?: string;
+  completed_at?: string;
   notes?: string;
+};
+
+export type FollowUpTask = {
+  id: string;
+  appointment_id?: string;
+  patient_name: string;
+  phone_number: string;
+  department: string;
+  sitting_info: string;
+  reason: string;
+  type: 'post_care' | 'next_sitting_reminder' | 'clinical_review' | 'treatment_followup';
+  due: string;
+  due_date: string;
+  priority: 'High' | 'Medium' | 'Low';
+  status: 'Pending' | 'Sent (AI)' | 'Completed';
+  created_by: 'AI Agent' | 'Doctor' | 'Staff';
+  whatsapp_message_content?: string;
+  total_sittings?: number;
+  current_sitting?: number;
+  interval_gap?: string;
+  interval_days?: number;
+  completed_at?: string;
 };
 
 export const DEFAULT_LA_FLEUR_SYSTEM_PROMPT = `SYSTEM PROMPT: LA FLEUR WHATSAPP AI CLINIC ASSISTANT
@@ -379,59 +514,40 @@ rather than directly booking a procedure.
 Never independently determine that a patient is medically suitable for treatment.
 
 ==================================================
-9. APPOINTMENT BOOKING
+9. APPOINTMENT BOOKING & PAYMENT GATEWAY FLOW
 ==================================================
 
 When the patient wants to book:
 
-First identify:
+MANDATORY 4-STEP INTAKE PROTOCOL - YOU MUST GATHER COMPLETE DETAILS BEFORE CONFIRMING ANY BOOKING:
 
-- Patient name
-- WhatsApp number, automatically when available
-- Treatment or concern
-- Appointment type
-- Preferred date
-- Preferred time or time range
+STEP 1: Clinical Concern & Treatment Discovery
+- Ask what treatment or skin/hair concern they need help with (e.g., Laser Hair Reduction, Acne Scars, PRP Hair Therapy, HydraFacial Deluxe, Chemical Peels, Anti-Aging & Botox, or In-Person Consultation).
 
-Do not ask again for information already available.
+STEP 2: Date & Slot Selection
+- Propose numbered consultation slots:
+  1. 10:30 AM
+  2. 11:30 AM
+  3. 02:30 PM
+  4. 04:00 PM
+  5. 05:30 PM
+- If patient replies with a single number (e.g. 1, 2, 3, 4, 5), understand it as selecting that option (e.g., 4 = 04:00 PM). Never say '44 is invalid'.
 
-Check the connected booking/calendar system for ACTUAL availability.
+STEP 3: Patient Registration Details
+- Collect:
+  • Full Name (Proper First & Last Name, e.g. "Arbaz Khan", never concatenate duplicate names like "Arbazarbaz")
+  • WhatsApp Contact Phone Number (e.g. "+91 98765 43210")
+  • Email Address (e.g. "patient@example.com" - for digital pass & invoice)
+- If the patient provides only their name, politely ask for their phone number and email address before confirming.
 
-Never invent appointment slots.
+STEP 4: Booking Summary & Payment Gateway Link
+- Only when Treatment, Date/Slot, Full Name, Phone Number, and Email Address are all collected, confirm the booking:
+  1. Full Summary (Patient Name, Phone, Email, Treatment, Sitting info, Doctor: Dr. Mrinalini, Date & Time).
+  2. Fixed Booking Fee: ₹500 payable online via Razorpay/UPI/Card to lock the slot.
+  3. Clinic Location (Google Maps): Suite 402, Green Glen Towers, Outer Ring Road, Bangalore - 560103.
+  4. Append the invisible booking JSON tag at the very end.
 
-Only offer slots returned by the booking system.
-
-Example:
-
-"I have these available times on Thursday:
-
-11:30 AM
-2:00 PM
-4:30 PM
-
-Which works best for you?"
-
-After the patient chooses a valid slot, complete the booking using the connected booking system.
-
-Only say that an appointment is booked AFTER successful booking confirmation from the system.
-
-Never say:
-
-"You're booked"
-
-until the booking operation succeeds.
-
-After successful booking:
-
-"You're booked ✅
-
-Laser Hair Reduction Consultation
-Thursday, 3 September
-2:00 PM
-
-I'll remind you before your appointment and send you anything you need to know beforehand."
-
-Store the booking in the CRM.
+UNDER NO CIRCUMSTANCES should you confirm an appointment or output the booking JSON tag until the patient's Clinical Concern, Slot, Full Name, Phone Number, and Email Address have all been collected.
 
 ==================================================
 10. APPOINTMENT CONFIRMATION
@@ -992,28 +1108,36 @@ Consent/opt-in status where required
 Never ask the patient for information already available and reliable in CRM.
 
 ==================================================
-27. PRICING
+27. PRICING & 4-QUESTION QUALIFICATION PROTOCOL
 ==================================================
 
-Only provide pricing if an approved pricing field or approved clinic price source exists.
+1. APPROXIMATE PRICE RANGES:
+   Always provide an INDICATIVE APPROXIMATE RANGE for treatments rather than fixed flat numbers, since clinical procedures vary by surface area, session intensity, and number of sittings.
 
-Never estimate treatment prices using general knowledge.
+   Standard Approximate Ranges for Reference:
+   • Laser Hair Reduction: Approx. ₹2,500 – ₹4,500 per sitting (area-dependent) | 6-sitting course approx. ₹14,999 – ₹24,000 (spaced 4–6 weeks apart)
+   • PRP Hair & Scalp Therapy: Approx. ₹4,000 – ₹6,000 per sitting | 4-sitting course approx. ₹15,000 – ₹20,000 (spaced 3–4 weeks apart)
+   • Chemical Brightening Peels: Approx. ₹2,500 – ₹4,000 per sitting | 4-sitting course approx. ₹9,999 – ₹15,000 (spaced 2–3 weeks apart)
+   • HydraFacial Deluxe: Approx. ₹3,500 – ₹5,500 per session
+   • RF Skin Tightening / MNRF: Approx. ₹4,500 – ₹7,500 per sitting | 4-sitting course approx. ₹16,000 – ₹26,000 (spaced 3–4 weeks apart)
+   • Anti-Aging & Botox: Approx. ₹350 – ₹450 per unit (typical area approx. ₹8,000 – ₹16,000)
+   • Dermatologist 3D Skin/Scalp Scan & Consultation: ₹800 (adjusted against treatment packages upon start)
 
-Never invent discounts.
+2. STRICT 4-QUESTION QUALIFICATION GATE:
+   • ONLY provide the approximate price range AFTER at least 4 conversational turns / questions have occurred with the patient.
+   • If the patient asks for price early (turns 1, 2, or 3), DO NOT provide prices immediately. 
+     Instead, politely explain:
+     "Because treatment plans, sitting counts, and device settings depend on your target area and skin/hair condition, our dermatologist customizes the protocol during evaluation. To help me give you an accurate estimate, may I ask [ask a leading diagnostic question: e.g. which area are you looking to treat / have you tried any treatments previously / how long have you noticed this concern]?"
+   • Once at least 4 questions / qualification turns have taken place, share the approximate price range transparently and guide them to book a consultation for exact doctor evaluation.
 
-Never negotiate pricing.
-
-If only indicative pricing is approved, clearly communicate it as indicative.
-
-Example:
-
-"Prices for this treatment start from ₹X. Final pricing depends on your treatment plan and will be confirmed by the clinic."
-
-If pricing is unavailable:
-
-"The exact price will depend on the treatment plan. I can have the La Fleur team confirm it for you."
-
-Do not expose internal commercial notes.
+3. PROACTIVE ENGAGEMENT VIA LEADING QUESTIONS:
+   • If the patient does not ask about pricing or gives short/vague responses, actively provide engaging LEADING QUESTIONS to discover their needs and maintain momentum.
+   • Examples of leading questions:
+     - "Are you experiencing active breakouts, uneven tanning, or post-acne pigmentation?"
+     - "Have you tried any topical creams or clinical treatments for this before?"
+     - "Are you preparing for an upcoming event or looking for a long-term maintenance course?"
+     - "Would you prefer starting with a single introductory session or exploring our 4–6 sitting multi-session packages?"
+     - "Would you like me to check Dr. Ananya Sharma's available slots for a 3D dermascope consultation this week?"
 
 ==================================================
 28. PRODUCTS
@@ -1536,6 +1660,8 @@ export interface LLMConfig {
   maxTokens: number;
   customBaseUrl?: string;
   isConfigured: boolean;
+  maskedApiKey?: string;
+  hasApiKey?: boolean;
 }
 
 export const defaultLLMConfig: LLMConfig = {
@@ -1546,29 +1672,160 @@ export const defaultLLMConfig: LLMConfig = {
   maxTokens: 1024,
   customBaseUrl: '',
   isConfigured: false,
+  maskedApiKey: '',
+  hasApiKey: false,
 };
 
 type DemoState = {
   systemPrompt: string;
   isCalendarConnected: boolean;
   appointments: Appointment[];
+  followUps: FollowUpTask[];
   knowledgeItems: KnowledgeItem[];
   llmConfig: LLMConfig;
+  deletedPatientPhones: string[];
 };
 
-const defaultAppointments: Appointment[] = [
-  { id: '1', patient_name: 'Priya Sharma', phone_number: '+91 98765 43210', date: '2026-09-04', time: '11:30 AM', department: 'Laser Hair Reduction', doctor: 'Dr. Ananya Sharma', status: 'Confirmed (AI)', sitting: 'Sitting 2 of 6' },
-  { id: '2', patient_name: 'Rohan Mehra', phone_number: '+91 98123 45678', date: '2026-09-04', time: '02:00 PM', department: 'PRP Hair Therapy', doctor: 'Dr. Shalini Roy', status: 'Confirmed (AI)', sitting: 'Sitting 1 of 4' },
-  { id: '3', patient_name: 'Kavita Patel', phone_number: '+91 97234 56789', date: '2026-09-05', time: '04:30 PM', department: 'Pigmentation & Peels', doctor: 'Dr. Meera Kapoor', status: 'Scheduled', sitting: 'Consultation' },
-  { id: '4', patient_name: 'Sunita Reddy', phone_number: '+91 99345 67890', date: '2026-09-05', time: '06:00 PM', department: 'Skin Rejuvenation', doctor: 'Dr. Vivek Menon', status: 'Scheduled', sitting: 'Sitting 3 of 5' },
+const getSeedTodayStr = () => new Date().toISOString().split('T')[0];
+const getSeedFutureStr = (days: number) => new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+
+export const defaultAppointments: Appointment[] = [
+  { 
+    id: '1', 
+    patient_name: 'Priya Sharma', 
+    phone_number: '+91 98765 43210', 
+    date: getSeedTodayStr(), 
+    time: '11:30 AM', 
+    department: 'Laser Hair Reduction', 
+    doctor: 'Dr. Mrinalini', 
+    status: 'Confirmed (AI)', 
+    current_sitting: 2,
+    total_sittings: 6,
+    sitting_interval: '4-6 weeks',
+    sitting_interval_days: 28,
+    sitting: 'Sitting 2 of 6',
+    notes: 'Underarm & Full Arms session 2. Skin tolerance excellent.'
+  },
+  { 
+    id: '2', 
+    patient_name: 'Rohan Mehra', 
+    phone_number: '+91 98123 45678', 
+    date: getSeedTodayStr(), 
+    time: '02:00 PM', 
+    department: 'PRP Hair Therapy', 
+    doctor: 'Dr. Mrinalini', 
+    status: 'Confirmed (AI)', 
+    current_sitting: 1,
+    total_sittings: 4,
+    sitting_interval: '3-4 weeks',
+    sitting_interval_days: 21,
+    sitting: 'Sitting 1 of 4',
+    notes: 'Crown thinning restoration protocol. First session.'
+  },
+  { 
+    id: '3', 
+    patient_name: 'Kavita Patel', 
+    phone_number: '+91 97234 56789', 
+    date: getSeedFutureStr(1), 
+    time: '04:30 PM', 
+    department: 'Pigmentation & Chemical Peels', 
+    doctor: 'Dr. Mrinalini', 
+    status: 'Scheduled', 
+    current_sitting: 1,
+    total_sittings: 4,
+    sitting_interval: '2-3 weeks',
+    sitting_interval_days: 14,
+    sitting: 'Sitting 1 of 4',
+    notes: 'Glycolic + Arbutin brightening series.'
+  },
+  { 
+    id: '4', 
+    patient_name: 'Sunita Reddy', 
+    phone_number: '+91 99345 67890', 
+    date: getSeedFutureStr(1), 
+    time: '06:00 PM', 
+    department: 'Skin Tightening (RF / MNRF)', 
+    doctor: 'Dr. Mrinalini', 
+    status: 'Scheduled', 
+    current_sitting: 3,
+    total_sittings: 4,
+    sitting_interval: '3-4 weeks',
+    sitting_interval_days: 21,
+    sitting: 'Sitting 3 of 4',
+    notes: 'Lower face & jawline collagen remodeling.'
+  },
+];
+
+export const defaultFollowUps: FollowUpTask[] = [
+  {
+    id: "f-1",
+    appointment_id: "1",
+    patient_name: "Priya Sharma",
+    phone_number: "+91 98765 43210",
+    department: "Laser Hair Reduction",
+    sitting_info: "After Sitting 2 of 6",
+    reason: "Day 2 Post-Laser check: Soothing gel application & sun exposure check",
+    type: "post_care",
+    due: "Today (in 2 hrs)",
+    due_date: getSeedFutureStr(2),
+    priority: "High",
+    status: "Pending",
+    created_by: "AI Agent"
+  },
+  {
+    id: "f-2",
+    appointment_id: "2",
+    patient_name: "Rohan Mehra",
+    phone_number: "+91 98123 45678",
+    department: "PRP Hair Therapy",
+    sitting_info: "Next Sitting Due (Sitting 2)",
+    reason: "PRP Sitting 2 Due Reminder (3-week interval window opening)",
+    type: "next_sitting_reminder",
+    due: "Tomorrow",
+    due_date: getSeedFutureStr(21),
+    priority: "High",
+    status: "Pending",
+    created_by: "AI Agent"
+  },
+  {
+    id: "f-3",
+    appointment_id: "3",
+    patient_name: "Kavita Patel",
+    phone_number: "+91 97234 56789",
+    department: "Pigmentation & Chemical Peels",
+    sitting_info: "After Sitting 1 of 4",
+    reason: "Day 3 Post-Peel peeling progression & moisturizer tolerance check",
+    type: "post_care",
+    due: "In 2 days",
+    due_date: getSeedFutureStr(3),
+    priority: "Medium",
+    status: "Pending",
+    created_by: "Doctor"
+  },
+  {
+    id: "f-4",
+    patient_name: "Amit Kumar Verma",
+    phone_number: "+91 98888 11223",
+    department: "Anti-Aging & Botox",
+    sitting_info: "Day 14 Clinical Review",
+    reason: "Post-Botox forehead muscle response & touch-up review",
+    type: "clinical_review",
+    due: "In 4 days",
+    due_date: getSeedFutureStr(14),
+    priority: "Low",
+    status: "Pending",
+    created_by: "Doctor"
+  }
 ];
 
 const defaultState: DemoState = {
   systemPrompt: DEFAULT_LA_FLEUR_SYSTEM_PROMPT,
   isCalendarConnected: true,
   appointments: defaultAppointments,
+  followUps: defaultFollowUps,
   knowledgeItems: defaultKnowledgeItems,
   llmConfig: defaultLLMConfig,
+  deletedPatientPhones: [],
 };
 
 // Global event emitter for same-tab reactivity
@@ -1582,6 +1839,7 @@ if (typeof window !== 'undefined') {
     const savedPrompt = localStorage.getItem('wacrm_system_prompt');
     const savedKnowledge = localStorage.getItem('wacrm_knowledge_items');
     const savedLlm = localStorage.getItem('wacrm_llm_config');
+    const savedFollowUps = localStorage.getItem('wacrm_follow_ups');
     const saved = localStorage.getItem('wacrm_demo_state');
     
     let activePrompt = DEFAULT_LA_FLEUR_SYSTEM_PROMPT;
@@ -1609,6 +1867,25 @@ if (typeof window !== 'undefined') {
       } catch {}
     }
 
+    let activeFollowUps: FollowUpTask[] = defaultFollowUps;
+    if (savedFollowUps) {
+      try {
+        const parsedF = JSON.parse(savedFollowUps);
+        if (Array.isArray(parsedF) && parsedF.length > 0) {
+          activeFollowUps = parsedF;
+        }
+      } catch {}
+    }
+
+    const savedDeleted = localStorage.getItem('wacrm_deleted_patients');
+    let activeDeleted: string[] = [];
+    if (savedDeleted) {
+      try {
+        const parsedD = JSON.parse(savedDeleted);
+        if (Array.isArray(parsedD)) activeDeleted = parsedD;
+      } catch {}
+    }
+
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed) {
@@ -1621,6 +1898,8 @@ if (typeof window !== 'undefined') {
           : activeKnowledge;
 
         const llmToUse = parsed.llmConfig ? { ...defaultLLMConfig, ...parsed.llmConfig, ...activeLlm } : activeLlm;
+        const followUpsToUse = (Array.isArray(parsed.followUps) && parsed.followUps.length > 0) ? parsed.followUps : activeFollowUps;
+        const deletedToUse = (Array.isArray(parsed.deletedPatientPhones) && parsed.deletedPatientPhones.length > 0) ? parsed.deletedPatientPhones : activeDeleted;
 
         currentState = {
           ...defaultState,
@@ -1628,6 +1907,8 @@ if (typeof window !== 'undefined') {
           systemPrompt: promptToUse,
           knowledgeItems: knowledgeToUse,
           llmConfig: llmToUse,
+          followUps: followUpsToUse,
+          deletedPatientPhones: deletedToUse,
           appointments: Array.isArray(parsed.appointments) && parsed.appointments.length > 0 
             ? parsed.appointments 
             : defaultAppointments
@@ -1638,12 +1919,43 @@ if (typeof window !== 'undefined') {
         ...defaultState,
         systemPrompt: activePrompt,
         knowledgeItems: activeKnowledge,
-        llmConfig: activeLlm
+        llmConfig: activeLlm,
+        followUps: activeFollowUps,
+        deletedPatientPhones: activeDeleted
       };
     }
   } catch (e) {
     console.error("Failed to load demo state", e);
   }
+
+  // Auto-hydrate cloud AI configuration from Supabase on client initialization
+  try {
+    fetch('/api/ai/config')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && (data.isConfigured || data.hasApiKey)) {
+          currentState.llmConfig = {
+            ...currentState.llmConfig,
+            provider: data.provider || currentState.llmConfig.provider || 'gemini',
+            model: data.model || currentState.llmConfig.model || 'gemini-2.5-flash',
+            customBaseUrl: data.customBaseUrl !== undefined ? data.customBaseUrl : currentState.llmConfig.customBaseUrl,
+            temperature: typeof data.temperature === 'number' ? data.temperature : currentState.llmConfig.temperature,
+            maxTokens: typeof data.maxTokens === 'number' ? data.maxTokens : currentState.llmConfig.maxTokens,
+            isConfigured: true,
+            hasApiKey: true,
+            maskedApiKey: data.maskedApiKey || '',
+          };
+          try {
+            localStorage.setItem('wacrm_llm_config', JSON.stringify(currentState.llmConfig));
+          } catch {}
+          window.dispatchEvent(new CustomEvent('wacrm_llm_config_updated', { detail: currentState.llmConfig }));
+          listeners.forEach((l) => l());
+        }
+      })
+      .catch((err) => {
+        console.warn('[Cloud AI Config Hydration]:', err);
+      });
+  } catch {}
 }
 
 function updateState(newState: Partial<DemoState>) {
@@ -1659,6 +1971,10 @@ function updateState(newState: Partial<DemoState>) {
         localStorage.setItem('wacrm_appointments', JSON.stringify(currentState.appointments));
         window.dispatchEvent(new CustomEvent('wacrm_appointments_updated', { detail: currentState.appointments }));
       }
+      if (newState.followUps !== undefined) {
+        localStorage.setItem('wacrm_follow_ups', JSON.stringify(currentState.followUps));
+        window.dispatchEvent(new CustomEvent('wacrm_follow_ups_updated', { detail: currentState.followUps }));
+      }
       if (newState.knowledgeItems !== undefined) {
         localStorage.setItem('wacrm_knowledge_items', JSON.stringify(currentState.knowledgeItems));
         window.dispatchEvent(new CustomEvent('wacrm_knowledge_updated', { detail: currentState.knowledgeItems }));
@@ -1666,6 +1982,10 @@ function updateState(newState: Partial<DemoState>) {
       if (newState.llmConfig !== undefined) {
         localStorage.setItem('wacrm_llm_config', JSON.stringify(currentState.llmConfig));
         window.dispatchEvent(new CustomEvent('wacrm_llm_config_updated', { detail: currentState.llmConfig }));
+      }
+      if (newState.deletedPatientPhones !== undefined) {
+        localStorage.setItem('wacrm_deleted_patients', JSON.stringify(currentState.deletedPatientPhones));
+        window.dispatchEvent(new CustomEvent('wacrm_deleted_patients_updated', { detail: currentState.deletedPatientPhones }));
       }
     } catch (e) {
       console.error("Failed to save state to localStorage", e);
@@ -1682,6 +2002,7 @@ export function useDemoState() {
       setState({ 
         ...currentState, 
         appointments: [...currentState.appointments],
+        followUps: [...currentState.followUps],
         knowledgeItems: [...currentState.knowledgeItems]
       });
     };
@@ -1691,12 +2012,30 @@ export function useDemoState() {
         currentState.systemPrompt = e.newValue;
         setState({ ...currentState, systemPrompt: e.newValue });
         listeners.forEach(l => l());
+      } else if (e.key === 'wacrm_deleted_patients' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            currentState.deletedPatientPhones = parsed;
+            setState({ ...currentState, deletedPatientPhones: parsed });
+            listeners.forEach(l => l());
+          }
+        } catch {}
       } else if (e.key === 'wacrm_knowledge_items' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
           if (Array.isArray(parsed)) {
             currentState.knowledgeItems = parsed;
             setState({ ...currentState, knowledgeItems: parsed });
+            listeners.forEach(l => l());
+          }
+        } catch {}
+      } else if (e.key === 'wacrm_follow_ups' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            currentState.followUps = parsed;
+            setState({ ...currentState, followUps: parsed });
             listeners.forEach(l => l());
           }
         } catch {}
@@ -1711,6 +2050,7 @@ export function useDemoState() {
           setState({ 
             ...currentState, 
             appointments: [...currentState.appointments],
+            followUps: [...currentState.followUps],
             knowledgeItems: [...currentState.knowledgeItems]
           });
           listeners.forEach(l => l());
@@ -1722,6 +2062,7 @@ export function useDemoState() {
       setState({ 
         ...currentState, 
         appointments: [...currentState.appointments],
+        followUps: [...currentState.followUps],
         knowledgeItems: [...currentState.knowledgeItems]
       });
     };
@@ -1756,6 +2097,8 @@ export function useDemoState() {
     listeners.add(handleUpdate);
     window.addEventListener('storage', handleStorage);
     window.addEventListener('wacrm_appointments_updated', handleCustomEvent);
+    window.addEventListener('wacrm_follow_ups_updated', handleCustomEvent);
+    window.addEventListener('wacrm_deleted_patients_updated', handleCustomEvent);
     window.addEventListener('wacrm_system_prompt_updated', handlePromptEvent);
     window.addEventListener('wacrm_knowledge_updated', handleKnowledgeEvent);
     window.addEventListener('wacrm_llm_config_updated', handleLlmEvent);
@@ -1767,6 +2110,8 @@ export function useDemoState() {
       listeners.delete(handleUpdate);
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('wacrm_appointments_updated', handleCustomEvent);
+      window.removeEventListener('wacrm_follow_ups_updated', handleCustomEvent);
+      window.removeEventListener('wacrm_deleted_patients_updated', handleCustomEvent);
       window.removeEventListener('wacrm_system_prompt_updated', handlePromptEvent);
       window.removeEventListener('wacrm_knowledge_updated', handleKnowledgeEvent);
       window.removeEventListener('wacrm_llm_config_updated', handleLlmEvent);
@@ -1799,24 +2144,248 @@ export function useDemoState() {
     updateState({ isCalendarConnected: connected });
   }, []);
 
-  const addAppointment = useCallback((appt: Omit<Appointment, 'id'>) => {
-    const docName = appt.department.includes("Hair") 
-      ? "Dr. Shalini Roy" 
-      : appt.department.includes("Pigment") || appt.department.includes("Peel") 
-      ? "Dr. Meera Kapoor" 
-      : "Dr. Ananya Sharma";
+  const addAppointment = useCallback((appt: Partial<Appointment> & { patient_name: string; phone_number: string; date: string; time: string; department: string }) => {
+    const protocol = getTreatmentProtocol(appt.department);
+    const docName = appt.doctor || protocol.defaultDoctor;
+    const currentSitting = appt.current_sitting || 1;
+    const totalSittings = appt.total_sittings || protocol.totalSittings;
+    const sittingInterval = appt.sitting_interval || protocol.sittingInterval;
+    const intervalDays = appt.sitting_interval_days || protocol.sittingIntervalDays;
 
     const newAppt: Appointment = { 
       ...appt, 
       id: `appt-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      doctor: appt.doctor || docName,
-      status: 'Confirmed (AI)'
+      doctor: docName,
+      status: appt.status || 'Confirmed (AI)',
+      current_sitting: currentSitting,
+      total_sittings: totalSittings,
+      sitting_interval: sittingInterval,
+      sitting_interval_days: intervalDays,
+      sitting: appt.sitting || (totalSittings > 1 ? `Sitting ${currentSitting} of ${totalSittings}` : `Consultation`),
+      notes: appt.notes || ''
     };
     
     const filtered = currentState.appointments.filter(a => !(a.patient_name.toLowerCase() === newAppt.patient_name.toLowerCase() && a.date === newAppt.date));
     const updated = [newAppt, ...filtered];
-    updateState({ appointments: updated });
+
+    // Automatically create a post-care follow-up task queued for the AI agent
+    const postCareTask: FollowUpTask = {
+      id: `fu-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      appointment_id: newAppt.id,
+      patient_name: newAppt.patient_name,
+      phone_number: newAppt.phone_number,
+      department: newAppt.department,
+      sitting_info: totalSittings > 1 ? `After Sitting ${currentSitting} of ${totalSittings}` : 'Post-Consultation',
+      reason: protocol.postCareGoal,
+      type: 'post_care',
+      due: `In ${protocol.postCareFollowUpDays} days`,
+      due_date: new Date(Date.now() + protocol.postCareFollowUpDays * 86400000).toISOString().split('T')[0],
+      priority: 'High',
+      status: 'Pending',
+      created_by: 'AI Agent'
+    };
+
+    const updatedFollowUps = [postCareTask, ...currentState.followUps];
+    updateState({ appointments: updated, followUps: updatedFollowUps });
     return newAppt;
+  }, []);
+
+  // Doctor / Staff action: Schedule Next Sitting
+  const scheduleNextSitting = useCallback((
+    currentApptId: string, 
+    nextDate: string, 
+    nextTime: string, 
+    notes?: string
+  ) => {
+    const current = currentState.appointments.find(a => a.id === currentApptId);
+    if (!current) return null;
+
+    const protocol = getTreatmentProtocol(current.department);
+    const nextSittingNum = (current.current_sitting || 1) + 1;
+    const totalSittings = current.total_sittings || protocol.totalSittings;
+
+    const nextAppt: Appointment = {
+      id: `appt-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      patient_name: current.patient_name,
+      phone_number: current.phone_number,
+      date: nextDate,
+      time: nextTime,
+      department: current.department,
+      doctor: current.doctor || protocol.defaultDoctor,
+      status: 'Confirmed (Staff)',
+      current_sitting: nextSittingNum,
+      total_sittings: totalSittings,
+      sitting_interval: current.sitting_interval || protocol.sittingInterval,
+      sitting_interval_days: current.sitting_interval_days || protocol.sittingIntervalDays,
+      sitting: `Sitting ${nextSittingNum} of ${totalSittings}`,
+      notes: notes || `Follow-up sitting scheduled by doctor. Interval: ${current.sitting_interval || protocol.sittingInterval}`
+    };
+
+    // Update current appointment with next_sitting_date & Mark Completed
+    const updatedAppts = currentState.appointments.map(a => 
+      a.id === currentApptId 
+        ? { ...a, next_sitting_date: nextDate, status: 'Completed' } 
+        : a
+    );
+
+    // Queue interval reminder task for AI agent
+    const reminderTask: FollowUpTask = {
+      id: `fu-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      appointment_id: nextAppt.id,
+      patient_name: nextAppt.patient_name,
+      phone_number: nextAppt.phone_number,
+      department: nextAppt.department,
+      sitting_info: `Sitting ${nextSittingNum} of ${totalSittings}`,
+      reason: `Pre-Sitting Reminder & Pre-Care (Scheduled on ${nextDate} at ${nextTime})`,
+      type: 'next_sitting_reminder',
+      due: `Scheduled for ${nextDate}`,
+      due_date: nextDate,
+      priority: 'High',
+      status: 'Pending',
+      created_by: 'Doctor'
+    };
+
+    updateState({ 
+      appointments: [nextAppt, ...updatedAppts],
+      followUps: [reminderTask, ...currentState.followUps]
+    });
+    return nextAppt;
+  }, []);
+
+  // Doctor/Admin action: Mark sitting completed & shift details into Follow-Up section
+  const completeSitting = useCallback((
+    appointmentId: string, 
+    customNextDate?: string, 
+    customGapText?: string, 
+    customGapDays?: number
+  ) => {
+    const current = currentState.appointments.find(a => a.id === appointmentId);
+    if (!current) return;
+
+    const protocol = getTreatmentProtocol(current.department);
+    const currentSitting = current.current_sitting || 1;
+    const totalSittings = current.total_sittings || protocol.totalSittings;
+    const intervalDays = customGapDays || current.sitting_interval_days || protocol.sittingIntervalDays || 14;
+    const intervalText = customGapText || current.sitting_interval || protocol.sittingInterval || '2 weeks';
+    const nowIso = new Date().toISOString();
+
+    const updatedAppts = currentState.appointments.map(a => 
+      a.id === appointmentId ? { ...a, status: 'Completed', completed_at: nowIso } : a
+    );
+
+    const newTasks: FollowUpTask[] = [];
+
+    // 1. Post-care check-in follow-up
+    newTasks.push({
+      id: `fu-${Date.now()}-pc`,
+      appointment_id: current.id,
+      patient_name: current.patient_name,
+      phone_number: current.phone_number,
+      department: current.department,
+      sitting_info: `Completed: Sitting ${currentSitting} of ${totalSittings}`,
+      reason: `Post-Sitting Care & Recovery Check (${current.department})`,
+      type: 'post_care',
+      due: 'In 2 days',
+      due_date: new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0],
+      priority: 'High',
+      status: 'Pending',
+      created_by: 'Doctor',
+      total_sittings: totalSittings,
+      current_sitting: currentSitting,
+      interval_gap: intervalText,
+      interval_days: intervalDays,
+      completed_at: nowIso,
+      whatsapp_message_content: `Hello ${current.patient_name}, Dr. Mrinalini at La Fleur Clinic hopes you are doing well after your ${current.department} session today. Please follow prescribed post-care instructions and keep the area hydrated. Reply if you have any questions.`
+    });
+
+    // 2. If there are remaining sittings, create Next Sitting Due Reminder task shifted to Follow-Up section
+    if (currentSitting < totalSittings) {
+      const nextDueTimestamp = customNextDate 
+        ? new Date(customNextDate).getTime() 
+        : Date.now() + intervalDays * 86400000;
+      const nextDueDateStr = !isNaN(nextDueTimestamp) 
+        ? new Date(nextDueTimestamp).toISOString().split('T')[0] 
+        : new Date(Date.now() + intervalDays * 86400000).toISOString().split('T')[0];
+
+      newTasks.push({
+        id: `fu-${Date.now()}-ns`,
+        appointment_id: current.id,
+        patient_name: current.patient_name,
+        phone_number: current.phone_number,
+        department: current.department,
+        sitting_info: `Sitting ${currentSitting + 1} of ${totalSittings}`,
+        reason: `Next Sitting ${currentSitting + 1} Due Nudge (${intervalText} interval gap)`,
+        type: 'next_sitting_reminder',
+        due: `Due on ${nextDueDateStr} (${intervalText} gap)`,
+        due_date: nextDueDateStr,
+        priority: 'High',
+        status: 'Pending',
+        created_by: 'Doctor',
+        total_sittings: totalSittings,
+        current_sitting: currentSitting + 1,
+        interval_gap: intervalText,
+        interval_days: intervalDays,
+        completed_at: nowIso,
+        whatsapp_message_content: `Dear ${current.patient_name}, Dr. Mrinalini at La Fleur Clinic recommends your Sitting ${currentSitting + 1} of ${totalSittings} for ${current.department} on ${nextDueDateStr} (${intervalText} gap). Please reply to confirm your preferred slot.`
+      });
+    }
+
+    updateState({
+      appointments: updatedAppts,
+      followUps: [...newTasks, ...currentState.followUps]
+    });
+  }, []);
+
+  // Admin / Manager action: Update appointment sittings count and interval gap
+  const updateAppointmentProtocol = useCallback((
+    appointmentId: string, 
+    updates: Partial<Appointment>
+  ) => {
+    updateState({
+      appointments: currentState.appointments.map(appt => 
+        appt.id === appointmentId 
+          ? { 
+              ...appt, 
+              ...updates,
+              sitting: updates.total_sittings && updates.total_sittings > 1 
+                ? `Sitting ${updates.current_sitting || appt.current_sitting || 1} of ${updates.total_sittings}`
+                : (updates.sitting || appt.sitting)
+            } 
+          : appt
+      )
+    });
+  }, []);
+
+  // Follow-Up Actions: Update sittings and interval gap
+  const updateFollowUpSittings = useCallback((
+    followUpId: string, 
+    updates: { 
+      total_sittings?: number; 
+      current_sitting?: number;
+      interval_gap?: string; 
+      interval_days?: number; 
+      next_due_date?: string; 
+      reason?: string;
+      whatsapp_message_content?: string;
+    }
+  ) => {
+    updateState({
+      followUps: currentState.followUps.map(task => {
+        if (task.id !== followUpId) return task;
+        const total = updates.total_sittings || task.total_sittings || 4;
+        const current = updates.current_sitting || task.current_sitting || 1;
+        const gap = updates.interval_gap || task.interval_gap || '2 weeks';
+        const dueDate = updates.next_due_date || task.due_date;
+        return {
+          ...task,
+          ...updates,
+          sitting_info: total > 1 ? `Sitting ${current} of ${total}` : task.sitting_info,
+          due: dueDate ? `Due on ${dueDate} (${gap} gap)` : task.due,
+          reason: updates.reason || task.reason,
+          whatsapp_message_content: updates.whatsapp_message_content || `Dear ${task.patient_name}, Dr. Mrinalini at La Fleur Clinic recommends your Sitting ${current} of ${total} for ${task.department} on ${dueDate} (${gap} gap). Please reply to confirm your slot.`
+        };
+      })
+    });
   }, []);
 
   const clearAppointments = useCallback(() => {
@@ -1831,6 +2400,43 @@ export function useDemoState() {
           : appt
       )
     });
+  }, []);
+
+  // Follow-Up Actions
+  const addFollowUpTask = useCallback((task: Omit<FollowUpTask, 'id' | 'status'>) => {
+    const newTask: FollowUpTask = {
+      ...task,
+      id: `fu-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      status: 'Pending'
+    };
+    updateState({ followUps: [newTask, ...currentState.followUps] });
+    return newTask;
+  }, []);
+
+  const completeFollowUpTask = useCallback((id: string) => {
+    updateState({
+      followUps: currentState.followUps.map(task => 
+        task.id === id ? { ...task, status: 'Completed' } : task
+      )
+    });
+  }, []);
+
+  const sendFollowUpWhatsApp = useCallback((id: string, customMessage?: string) => {
+    updateState({
+      followUps: currentState.followUps.map(task => 
+        task.id === id 
+          ? { 
+              ...task, 
+              status: 'Sent (AI)', 
+              whatsapp_message_content: customMessage || task.whatsapp_message_content 
+            } 
+          : task
+      )
+    });
+  }, []);
+
+  const clearFollowUps = useCallback(() => {
+    updateState({ followUps: [] });
   }, []);
 
   // Knowledge Base Actions
@@ -1871,6 +2477,50 @@ export function useDemoState() {
     updateState({ knowledgeItems: defaultKnowledgeItems });
   }, []);
 
+  // Patient & Appointment Deletion (Admin and local sync)
+  const deletePatient = useCallback((phoneOrId: string) => {
+    if (!phoneOrId) return;
+    const cleanTarget = phoneOrId.trim().toLowerCase().replace(/[\s\-\(\)\+]/g, '');
+
+    const updatedAppts = currentState.appointments.filter(a => {
+      const cleanPhone = (a.phone_number || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
+      const cleanId = (a.id || '').toLowerCase();
+      return a.id !== phoneOrId && cleanPhone !== cleanTarget && cleanId !== cleanTarget;
+    });
+
+    const updatedFollowUps = currentState.followUps.filter(f => {
+      const cleanPhone = (f.phone_number || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
+      const cleanApptId = (f.appointment_id || '').toLowerCase();
+      const cleanId = (f.id || '').toLowerCase();
+      return (
+        f.id !== phoneOrId &&
+        f.appointment_id !== phoneOrId &&
+        cleanPhone !== cleanTarget &&
+        cleanApptId !== cleanTarget &&
+        cleanId !== cleanTarget
+      );
+    });
+
+    const currentDeleted = currentState.deletedPatientPhones || [];
+    const updatedDeleted = Array.from(new Set([...currentDeleted, phoneOrId, cleanTarget]));
+
+    updateState({
+      appointments: updatedAppts,
+      followUps: updatedFollowUps,
+      deletedPatientPhones: updatedDeleted
+    });
+  }, []);
+
+  const deleteAppointment = useCallback((appointmentId: string) => {
+    if (!appointmentId) return;
+    const updatedAppts = currentState.appointments.filter(a => a.id !== appointmentId);
+    const updatedFollowUps = currentState.followUps.filter(f => f.appointment_id !== appointmentId && f.id !== appointmentId);
+    updateState({
+      appointments: updatedAppts,
+      followUps: updatedFollowUps
+    });
+  }, []);
+
   return {
     ...state,
     setSystemPrompt,
@@ -1879,8 +2529,18 @@ export function useDemoState() {
     resetLLMConfig,
     setIsCalendarConnected,
     addAppointment,
+    scheduleNextSitting,
+    completeSitting,
+    updateAppointmentProtocol,
+    updateFollowUpSittings,
     clearAppointments,
     rescheduleAppointment,
+    deletePatient,
+    deleteAppointment,
+    addFollowUpTask,
+    completeFollowUpTask,
+    sendFollowUpWhatsApp,
+    clearFollowUps,
     addKnowledgeItem,
     updateKnowledgeItem,
     deleteKnowledgeItem,
@@ -1888,5 +2548,6 @@ export function useDemoState() {
     resetKnowledgeItems
   };
 }
+
 
 

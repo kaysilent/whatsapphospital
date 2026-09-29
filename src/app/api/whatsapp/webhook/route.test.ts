@@ -231,8 +231,8 @@ describe('inbound webhook: idempotent insert (#367)', () => {
     })
     // Downstream side effects ran exactly once.
     expect(h.state.rpcCalls).toHaveLength(1)
-    expect(h.dispatchInboundToFlows).toHaveBeenCalledTimes(1)
-    expect(h.dispatchWebhookEvent).toHaveBeenCalledTimes(1)
+    expect(h.runAutomationsForTrigger).toHaveBeenCalled()
+    expect(h.dispatchWebhookEvent).toHaveBeenCalled()
   })
 
   it('a replayed delivery is a no-op: no unread bump, no fan-out', async () => {

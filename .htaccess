@@ -1,0 +1,46 @@
+# ================================================================
+# Hostinger Node.js .htaccess Configuration
+# ================================================================
+
+# 1. Enable Node.js Phusion Passenger (if supported by your Hostinger plan)
+<IfModule mod_passenger.c>
+  PassengerAppRoot "/home/uXXXXXXXXX/domains/yourdomain.com/public_html"
+  PassengerAppType node
+  PassengerStartupFile server.js
+  PassengerNodejs "/opt/alt/alt-nodejs20/root/usr/bin/node"
+</IfModule>
+
+# 2. Rewrite Rules & Static File Optimization
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Serve existing static files directly from public directory
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteRule ^ - [L]
+
+  # HTTPS Force (Optional - uncomment if SSL is active)
+  # RewriteCond %{HTTPS} off
+  # RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# 3. Cache Control for Next.js Static Assets
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType image/jpg "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/gif "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType text/css "access plus 1 month"
+  ExpiresByType application/javascript "access plus 1 month"
+</IfModule>
+
+# 4. Security Headers
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set X-XSS-Protection "1; mode=block"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

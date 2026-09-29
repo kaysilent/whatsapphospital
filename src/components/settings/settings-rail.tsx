@@ -4,6 +4,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
 import {
   RAIL_GROUPS,
   SECTION_META,
@@ -11,17 +12,8 @@ import {
   type SettingsSection,
 } from './settings-sections';
 
-// Width at/above which the rail is a vertical column (already in view, so
-// no auto-scroll needed). Mirrors the Tailwind `lg:` breakpoint that
-// drives the row→column switch in the markup below — keep the two in sync.
 const RAIL_DESKTOP_MIN_PX = 1024;
 
-/**
- * The settings left rail — grouped, vertical on desktop and a
- * horizontal scroller on narrow screens (mirrors the mockup's ≤920px
- * behaviour). The active item auto-scrolls into view when the rail is
- * horizontal so a deep-linked section is never off-screen.
- */
 export function SettingsRail({
   active,
   onSelect,
@@ -33,9 +25,8 @@ export function SettingsRail({
 }) {
   const t = useTranslations('Settings');
   const activeRef = useRef<HTMLButtonElement>(null);
+  const { isStaff, isManager } = useAuth();
 
-  // When horizontal (mobile), keep the active chip in view. On desktop
-  // the rail is a static column, so skip.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (window.matchMedia(`(min-width: ${RAIL_DESKTOP_MIN_PX}px)`).matches) return;
@@ -56,9 +47,21 @@ export function SettingsRail({
       )}
     >
       {RAIL_GROUPS.map(({ label, group }) => {
-        const items = SETTINGS_SECTIONS.filter(
-          (s) => SECTION_META[s].group === group,
-        );
+        const items = SETTINGS_SECTIONS.filter((s) => {
+          const meta = SECTION_META[s];
+          if (meta.group !== group) return false;
+          if (!meta.minRole) return true;
+          if (meta.minRole === 'manager') {
+            return !isStaff; // manager, admin, super_admin
+          }
+          if (meta.minRole === 'admin') {
+            return !isStaff && !isManager; // admin, super_admin
+          }
+          return true;
+        });
+
+        if (items.length === 0) return null;
+
         return (
           <div
             key={group}
@@ -89,7 +92,15 @@ export function SettingsRail({
                   )}
                 >
                   <Icon className="size-4 shrink-0" />
-                  <span className="flex-1">{t(`sections.${s}`)}</span>
+                  <span className="flex-1">
+                    {(() => {
+                      try {
+                        const tr = t(`sections.${s}`);
+                        if (tr && !tr.startsWith('Settings.sections.')) return tr;
+                      } catch {}
+                      return meta.label;
+                    })()}
+                  </span>
                   {hints?.[s] != null ? (
                     <span
                       className={cn(

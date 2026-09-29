@@ -42,3 +42,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local memory system
+.memory/
+
+# deploy archives & staging
+*.zip
+staging_hostinger_deploy/
+temp_deploy_staging/
+package-deploy.js
+
