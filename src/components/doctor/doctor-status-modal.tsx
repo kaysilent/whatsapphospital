@@ -76,7 +76,7 @@ export function DoctorStatusModal({
   const [endDate, setEndDate] = useState<string>('');
   const [reason, setReason] = useState<string>('Annual Vacation / Holiday');
   const [customReason, setCustomReason] = useState<string>('');
-  const [coveringDoctor, setCoveringDoctor] = useState<string>('Dr. Shalini Roy (Locum Backup)');
+  const [coveringDoctor, setCoveringDoctor] = useState<string>('Clinical Triage Team (WhatsApp Only)');
   const [endTime, setEndTime] = useState<string>('04:00 PM');
   const [customAutoReply, setCustomAutoReply] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'status' | 'history'>('status');
@@ -94,7 +94,7 @@ export function DoctorStatusModal({
       setEndTime(currentDoc.endTime || '04:00 PM');
       
       const otherDoc = doctors.find(d => d.doctorId !== currentDoc.doctorId);
-      setCoveringDoctor(currentDoc.coveringDoctor || otherDoc?.doctorName || 'Dr. Shalini Roy (Locum Backup)');
+      setCoveringDoctor(currentDoc.coveringDoctor || otherDoc?.doctorName || 'Clinical Triage Team (WhatsApp Only)');
       
       setCustomAutoReply(currentDoc.autoReplyNotice || '');
     }
@@ -494,9 +494,9 @@ export function DoctorStatusModal({
                         onChange={(e) => setCoveringDoctor(e.target.value)}
                         className="w-full h-10 rounded-xl border border-border/80 bg-background px-3 py-1.5 text-xs sm:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       >
-                        <option value="Dr. Shalini Roy (Locum Backup)">Dr. Shalini Roy (Locum Backup)</option>
-                        <option value="Dr. Rajesh Gupta (Senior Consultant)">Dr. Rajesh Gupta (Senior Consultant)</option>
                         <option value="Clinical Triage Team (WhatsApp Only)">Clinical Triage Team (WhatsApp Only)</option>
+                        <option value="On-Call Locum Consultant">On-Call Locum Consultant</option>
+                        <option value="Duty Medical Officer">Duty Medical Officer</option>
                       </select>
                     </div>
                   </div>

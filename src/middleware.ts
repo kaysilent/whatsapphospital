@@ -5,7 +5,9 @@ export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const { pathname, searchParams } = request.nextUrl
-  const isLoginPage = pathname === '/login'
+  const isRolePortal = pathname === '/admin' || pathname === '/doctor' || pathname === '/staff'
+  const isSignupPage = pathname === '/signup'
+  const isForgotPasswordPage = pathname === '/forgot-password'
   const isJoinPage = pathname.startsWith('/join')
   const isAuthCallback = pathname.startsWith('/auth')
   const isDemoPage = pathname === '/demo' || pathname.startsWith('/demo/')
@@ -16,8 +18,11 @@ export async function middleware(request: NextRequest) {
                       pathname.startsWith('/api/payments/') || 
                       pathname.startsWith('/api/v1') || 
                       pathname.startsWith('/api/invitations') || 
-                      pathname.startsWith('/api/auth')
-  const isPublic = isLoginPage || isJoinPage || isAuthCallback || isDemoPage || isPaymentPage || isPublicApi
+                      pathname.startsWith('/api/auth') ||
+                      pathname.startsWith('/api/appointments') ||
+                      pathname.startsWith('/api/contacts') ||
+                      pathname.startsWith('/api/doctor')
+  const isPublic = isRolePortal || isSignupPage || isForgotPasswordPage || isJoinPage || isAuthCallback || isDemoPage || isPaymentPage || isPublicApi
 
   // Check demo session cookie
   const hasDemoCookie = request.cookies.get('wacrm_demo_session')?.value === '1'
@@ -66,8 +71,8 @@ export async function middleware(request: NextRequest) {
     return redirectRes
   }
 
-  // Redirect signed-in user off /login
-  if (user && isLoginPage) {
+  // Redirect signed-in user off role portals
+  if (user && isRolePortal) {
     const inviteToken = searchParams.get('invite')
     if (inviteToken) {
       return redirectWithCookies(new URL(`/join/${inviteToken}`, request.url))
@@ -75,13 +80,13 @@ export async function middleware(request: NextRequest) {
     return redirectWithCookies(new URL('/dashboard', request.url))
   }
 
-  // Return 401 JSON for unauthenticated API calls, redirect browser pages to /login
+  // Return 401 JSON for unauthenticated API calls, redirect browser pages to /admin
   if (!isAuthenticated && !isPublic) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const loginUrl = new URL('/login', request.url)
-    return redirectWithCookies(loginUrl)
+    const adminUrl = new URL('/admin', request.url)
+    return redirectWithCookies(adminUrl)
   }
 
   return supabaseResponse

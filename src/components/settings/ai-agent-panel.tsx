@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LlmConfigPanel } from '@/components/settings/llm-config-panel';
+import { toast } from 'sonner';
 
 const HOSPITAL_PROMPT = `You are an intelligent, empathetic AI receptionist for Aivry Hospital. Your goal is to help patients book and reschedule doctor appointments, check OPD consultation timings, or handle emergency triage. Be polite, concise, natural, and helpful like a real human receptionist. Collect booking details step-by-step: patient's name, phone number, department (e.g. Cardiology, Pediatrics, General Medicine, Orthopedics, Neurology), preferred date, and preferred time slot. Once details are confirmed, complete the booking.`;
 
@@ -33,38 +34,91 @@ export function AiAgentPanel() {
   } = useDemoState();
   const [localPrompt, setLocalPrompt] = useState(systemPrompt);
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [saveStatusText, setSaveStatusText] = useState<string | null>(null);
 
   useEffect(() => {
-    setLocalPrompt(systemPrompt);
+    fetch('/api/ai/config')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.systemPrompt && typeof data.systemPrompt === 'string' && data.systemPrompt.trim()) {
+          setLocalPrompt(data.systemPrompt.trim());
+          setSystemPrompt(data.systemPrompt.trim());
+        }
+      })
+      .catch(() => {});
+  }, [setSystemPrompt]);
+
+  useEffect(() => {
+    if (systemPrompt && systemPrompt.trim()) {
+      setLocalPrompt(systemPrompt);
+    }
   }, [systemPrompt]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setIsSaving(true);
     setSystemPrompt(localPrompt);
-    setIsSaved(true);
-    setSaveStatusText("System prompt saved & applied live to WhatsApp AI Agent!");
-    setTimeout(() => {
-      setIsSaved(false);
-      setSaveStatusText(null);
-    }, 3500);
+    try {
+      const res = await fetch('/api/ai/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ systemPrompt: localPrompt }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setIsSaved(true);
+        setSaveStatusText("System prompt saved to cloud & applied live to WhatsApp AI Agent!");
+        toast.success("WhatsApp AI System Prompt saved & active!");
+      } else {
+        setIsSaved(true);
+        setSaveStatusText("System prompt applied live to WhatsApp AI Agent!");
+        toast.success("System prompt updated!");
+      }
+    } catch {
+      setIsSaved(true);
+      setSaveStatusText("System prompt applied live to WhatsApp AI Agent!");
+      toast.success("System prompt updated!");
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => {
+        setIsSaved(false);
+        setSaveStatusText(null);
+      }, 3500);
+    }
   };
 
-  const handleResetToLaFleur = () => {
+  const handleResetToLaFleur = async () => {
     setLocalPrompt(DEFAULT_LA_FLEUR_SYSTEM_PROMPT);
     setSystemPrompt(DEFAULT_LA_FLEUR_SYSTEM_PROMPT);
+    try {
+      await fetch('/api/ai/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ systemPrompt: DEFAULT_LA_FLEUR_SYSTEM_PROMPT }),
+      });
+    } catch {}
     setIsSaved(true);
     setSaveStatusText("Reset to official La Fleur Aesthetic Clinic Prompt!");
+    toast.success("Reset to default clinic prompt");
     setTimeout(() => {
       setIsSaved(false);
       setSaveStatusText(null);
     }, 3500);
   };
 
-  const handleApplyHospitalPreset = () => {
+  const handleApplyHospitalPreset = async () => {
     setLocalPrompt(HOSPITAL_PROMPT);
     setSystemPrompt(HOSPITAL_PROMPT);
+    try {
+      await fetch('/api/ai/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ systemPrompt: HOSPITAL_PROMPT }),
+      });
+    } catch {}
     setIsSaved(true);
     setSaveStatusText("Applied General Hospital Receptionist preset!");
+    toast.success("Applied General Hospital preset");
     setTimeout(() => {
       setIsSaved(false);
       setSaveStatusText(null);
@@ -90,12 +144,11 @@ export function AiAgentPanel() {
         </div>
 
         <Link
-          href="/demo"
+          href="/inbox"
           className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 text-xs font-semibold shadow-xs transition-colors"
         >
-          <Sparkles className="h-3.5 w-3.5" />
-          <span>Open Live WhatsApp Simulator</span>
-          <ExternalLink className="h-3 w-3 ml-0.5" />
+          <Bot className="h-3.5 w-3.5" />
+          <span>Open Live Inbox</span>
         </Link>
       </div>
 

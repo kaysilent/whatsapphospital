@@ -293,3 +293,93 @@ export async function deleteGoogleCalendarEvent(eventId: string): Promise<{ succ
   }
 }
 
+/**
+ * 5. UNIFIED SYNC: Sync an appointment to Google Calendar on create, update, or delete.
+ */
+export async function syncAppointmentToGoogleCalendar(
+  appointment: {
+    id?: string;
+    booking_id?: string;
+    patient_name: string;
+    phone_number?: string;
+    date: string;
+    time: string;
+    department?: string;
+    doctor?: string;
+    status?: string;
+    notes?: string;
+  },
+  action: 'create' | 'update' | 'delete' = 'create'
+): Promise<{ success: boolean; eventId?: string; directAddUrl?: string; error?: string }> {
+  try {
+    const config = getGoogleCalendarConfig();
+    const eventId = appointment.id || appointment.booking_id || `gcal-${Date.now()}`;
+    const directAddUrl = generateGoogleCalendarEventUrl({
+      title: `Consultation: ${appointment.patient_name}`,
+      description: `Appointment for ${appointment.patient_name} - ${appointment.department || 'Clinical Consultation'}`,
+      location: 'Road No.11 B, Jubilee hills, Hyderabad - 500045',
+      startDate: appointment.date,
+      startTime: appointment.time,
+      patientName: appointment.patient_name,
+      patientPhone: appointment.phone_number || '',
+      doctorName: appointment.doctor || 'Dr. Mrinalini',
+      treatmentName: appointment.department || 'Clinical Consultation',
+      appointmentId: appointment.booking_id || appointment.id
+    });
+
+    if (action === 'delete') {
+      if (typeof window !== 'undefined') {
+        await deleteGoogleCalendarEvent(eventId).catch(() => {});
+      } else if (config.apiKey && config.calendarId) {
+        try {
+          await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(config.calendarId)}/events/${encodeURIComponent(eventId)}?key=${config.apiKey}`, {
+            method: 'DELETE'
+          });
+        } catch {}
+      }
+      return { success: true, eventId };
+    }
+
+    // CREATE or UPDATE
+    if (typeof window !== 'undefined') {
+      const res = await createGoogleCalendarEvent({
+        title: `Consultation: ${appointment.patient_name}`,
+        description: `Consultation with ${appointment.doctor || 'Dr. Mrinalini'}`,
+        location: 'Road No.11 B, Jubilee hills, Hyderabad - 500045',
+        startDate: appointment.date,
+        startTime: appointment.time,
+        patientName: appointment.patient_name,
+        patientPhone: appointment.phone_number || '',
+        doctorName: appointment.doctor || 'Dr. Mrinalini',
+        treatmentName: appointment.department || 'Clinical Consultation',
+        appointmentId: appointment.booking_id || appointment.id
+      }).catch(() => null);
+      if (res?.success) return res;
+    } else if (config.apiKey && config.calendarId) {
+      try {
+        const { startIso, endIso } = parseAppointmentDateTime(appointment.date, appointment.time, 45);
+        const googleEventData = {
+          id: eventId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 64) || `evt${Date.now()}`,
+          summary: `Consultation: ${appointment.patient_name} - ${appointment.department || 'Clinical Consultation'}`,
+          description: `🏥 Clinic: La Fleur Aesthetic Clinic\n👩‍⚕️ Doctor: ${appointment.doctor || 'Dr. Mrinalini'}\n👤 Patient: ${appointment.patient_name}\n📞 Phone: ${appointment.phone_number || 'Confirmed'}\n💉 Treatment: ${appointment.department || 'Consultation'}\n📅 Date: ${appointment.date} at ${appointment.time}\n\n-- Synced with Google Calendar --`,
+          location: 'Road No.11 B, Jubilee hills, Hyderabad - 500045',
+          start: { dateTime: startIso, timeZone: config.syncTimezone || 'Asia/Kolkata' },
+          end: { dateTime: endIso, timeZone: config.syncTimezone || 'Asia/Kolkata' },
+          status: 'confirmed'
+        };
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(config.calendarId)}/events?key=${config.apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(googleEventData)
+        }).catch(() => {});
+      } catch (err: any) {
+        console.warn('[Google Calendar Sync API notice]:', err?.message);
+      }
+    }
+
+    return { success: true, eventId, directAddUrl };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+

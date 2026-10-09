@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentAccount } from '@/lib/auth/account';
 import { DEFAULT_PAYMENT_CONFIG, formatThankYouMessage, PaymentConfig } from '@/lib/payments/gateway';
+import { syncAppointmentToGoogleCalendar } from '@/lib/calendar/google-calendar';
 
 export async function POST(request: Request) {
   try {
@@ -78,17 +79,38 @@ export async function POST(request: Request) {
           .eq('id', appointmentId);
       } else if (phoneNumber) {
         // Match appointment by phone
+        const updatePayload: any = {
+          payment_status: 'paid',
+          status: 'Confirmed',
+          receipt_number: receiptId,
+          payment_id: gatewayPaymentId || paymentId,
+          updated_at: nowIso,
+        };
+        if (patientName && patientName.toLowerCase() !== 'patient' && patientName.toLowerCase() !== 'valued patient') {
+          updatePayload.patient_name = patientName;
+        }
         await supabase
           .from('appointments')
-          .update({
-            payment_status: 'paid',
-            status: 'Confirmed',
-            receipt_number: receiptId,
-            payment_id: gatewayPaymentId || paymentId,
-            updated_at: nowIso,
-          })
+          .update(updatePayload)
           .eq('phone_number', phoneNumber)
           .eq('payment_status', 'pending');
+      }
+
+      // Sync confirmed appointment to Google Calendar
+      try {
+        await syncAppointmentToGoogleCalendar({
+          id: appointmentId,
+          patient_name: patientName || 'Valued Patient',
+          phone_number: phoneNumber,
+          date: date || new Date().toISOString().split('T')[0],
+          time: time || '11:30 AM',
+          department: treatment || 'Clinical Consultation',
+          doctor: doctor || 'Dr. Mrinalini',
+          status: 'Confirmed',
+          notes: `[Receipt: ${receiptId}] Paid via ${paymentMode}`,
+        }, 'create');
+      } catch (calErr: any) {
+        console.warn('[Payments verify Google Calendar sync notice]:', calErr?.message);
       }
     } catch (dbErr) {
       console.warn('[Payments verify DB update notice]:', dbErr);
@@ -107,23 +129,60 @@ export async function POST(request: Request) {
       payment_mode: paymentMode,
     });
 
-    // 4. Optionally record or send message via WhatsApp outbound message dispatcher
+    // 4. Send message via WhatsApp outbound message dispatcher
     try {
       if (phoneNumber) {
-        // Check if a conversation exists to log the receipt
+        const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
+        // Check if a conversation exists to log and dispatch the receipt
         const { data: conv } = await supabase
           .from('conversations')
-          .select('id')
-          .eq('contact_phone', phoneNumber)
+          .select('id, contact_id, account_id')
+          .eq('contact_phone', cleanPhone)
           .maybeSingle();
 
-        if (conv?.id) {
+        let effectiveAccountId = accountId || conv?.account_id;
+        let effectiveConvId = conv?.id;
+        let effectiveContactId = conv?.contact_id;
+
+        if (!effectiveAccountId) {
+          const { data: primaryAcc } = await supabase.from('accounts').select('id').limit(1).maybeSingle();
+          effectiveAccountId = primaryAcc?.id;
+        }
+
+        if (!effectiveContactId && effectiveAccountId) {
+          const { data: contact } = await supabase
+            .from('contacts')
+            .select('id')
+            .eq('account_id', effectiveAccountId)
+            .ilike('phone', `%${cleanPhone.slice(-10)}%`)
+            .maybeSingle();
+          effectiveContactId = contact?.id;
+        }
+
+        if (effectiveConvId) {
           await supabase.from('messages').insert({
-            conversation_id: conv.id,
+            conversation_id: effectiveConvId,
             sender_type: 'agent',
             content_text: thankYouMessage,
             status: 'sent',
           });
+        }
+
+        // Live outbound WhatsApp dispatch via Meta Cloud API
+        if (effectiveAccountId && effectiveConvId && effectiveContactId) {
+          try {
+            const { engineSendText } = await import('@/lib/automations/meta-send');
+            await engineSendText({
+              accountId: effectiveAccountId,
+              userId: 'system',
+              conversationId: effectiveConvId,
+              contactId: effectiveContactId,
+              text: thankYouMessage,
+            });
+            console.log('[Payments verify]: Successfully dispatched WhatsApp receipt to', cleanPhone);
+          } catch (waErr: any) {
+            console.warn('[Payments verify WhatsApp Meta send notice]:', waErr?.message);
+          }
         }
       }
     } catch (msgErr) {

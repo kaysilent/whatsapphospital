@@ -110,11 +110,11 @@ function DemoPageInner() {
       {!isAuthenticated && (
         <header className="h-14 border-b border-border/60 bg-card/60 backdrop-blur-md px-4 sm:px-8 flex items-center justify-between z-30 sticky top-0">
           <Link
-            href="/login"
+            href="/admin"
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-background/80 px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-all shadow-2xs group"
           >
             <ArrowLeft className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary group-hover:-translate-x-0.5 transition-all" />
-            <span>Back to Login</span>
+            <span>Back to Portal</span>
           </Link>
 
           <div className="flex items-center gap-2.5">
@@ -122,7 +122,7 @@ function DemoPageInner() {
               WhatsApp AI Preview
             </span>
             <Link
-              href="/login"
+              href="/admin"
               className="inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 px-3.5 py-1.5 text-xs font-semibold shadow-2xs transition-colors"
             >
               <LogIn className="h-3.5 w-3.5" />

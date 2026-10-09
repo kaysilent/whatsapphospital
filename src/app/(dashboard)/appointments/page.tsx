@@ -50,7 +50,8 @@ import {
   MessageSquare,
   Sliders,
   Settings2,
-  RefreshCcw
+  RefreshCcw,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,12 +62,15 @@ import Link from 'next/link';
 const DAYS_NAME = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function AppointmentsPage() {
+  const [isSyncing, setIsSyncing] = useState(false);
   const { 
     appointments, 
     addAppointment, 
     scheduleNextSitting, 
     completeSitting,
-    updateAppointmentProtocol
+    updateAppointmentProtocol,
+    syncAppointments,
+    deleteAppointment
   } = useDemoState();
 
   const {
@@ -167,6 +171,7 @@ export default function AppointmentsPage() {
 
   const filteredAppointments = appointments.filter(appt => {
     const matchesSearch = appt.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (appt.booking_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           appt.phone_number.includes(searchTerm) ||
                           appt.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (appt.sitting || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -278,18 +283,46 @@ export default function AppointmentsPage() {
     handleOpenCompleteModal(appt);
   };
 
-  const handleSendReminder = (appt: Appointment) => {
-    toast.success(`WhatsApp Pre-Care & Timing Reminder sent to ${appt.patient_name} (${appt.phone_number})!`);
+  const handleSendReminder = async (appt: Appointment) => {
+    const mapsLink = "https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Hyderabad";
+    const msg = `Appointment Reminder (5:00 PM Update):\n\nDear ${appt.patient_name}, your consultation with Dr. Mrinalini is scheduled for ${appt.date} at ${appt.time} for ${appt.department || 'Clinical Consultation'}.\n\n• Pre-Care Guidance: Avoid active exfoliants, keep area clean, and stay hydrated.\n• Clinic Google Maps Location:\n${mapsLink}\nRoad No.11 B, Jubilee hills, Hyderabad - 500045.\n\nPlease reply CONFIRM to acknowledge.`;
+
+    try {
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: appt.phone_number,
+          name: appt.patient_name,
+          message_type: 'text',
+          content_text: msg,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to send WhatsApp reminder');
+      } else {
+        toast.success(`WhatsApp Pre-Care & Timing Reminder sent to ${appt.patient_name} (${appt.phone_number})!`);
+      }
+    } catch (err) {
+      console.error('Send reminder error:', err);
+      toast.error('Network error sending WhatsApp reminder');
+    }
   };
 
   // Calendar grid computation helpers
   const year = currentCalendarDate.getFullYear();
   const month = currentCalendarDate.getMonth();
-  const monthName = currentCalendarDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthName = `${MONTH_NAMES[month]} ${year}`;
 
   const firstDayOfMonth = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+  // Helper for deterministic local YYYY-MM-DD
+  const formatYMD = (y: number, m: number, d: number) => 
+    `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
   // Days grid: previous month padding + current month days + next month padding
   const calendarCells = [];
@@ -297,7 +330,7 @@ export default function AppointmentsPage() {
   for (let i = firstDayOfMonth - 1; i >= 0; i--) {
     const dayNum = daysInPrevMonth - i;
     const prevMonthDate = new Date(year, month - 1, dayNum);
-    const dateStr = prevMonthDate.toISOString().split('T')[0];
+    const dateStr = formatYMD(prevMonthDate.getFullYear(), prevMonthDate.getMonth(), prevMonthDate.getDate());
     calendarCells.push({
       dateStr,
       dayNum,
@@ -308,10 +341,7 @@ export default function AppointmentsPage() {
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dateObj = new Date(year, month, d);
-    // Format YYYY-MM-DD
-    const mStr = String(month + 1).padStart(2, '0');
-    const dStr = String(d).padStart(2, '0');
-    const dateStr = `${year}-${mStr}-${dStr}`;
+    const dateStr = formatYMD(year, month, d);
     calendarCells.push({
       dateStr,
       dayNum: d,
@@ -323,7 +353,7 @@ export default function AppointmentsPage() {
   const remainingCells = 42 - calendarCells.length;
   for (let i = 1; i <= remainingCells; i++) {
     const nextMonthDate = new Date(year, month + 1, i);
-    const dateStr = nextMonthDate.toISOString().split('T')[0];
+    const dateStr = formatYMD(nextMonthDate.getFullYear(), nextMonthDate.getMonth(), nextMonthDate.getDate());
     calendarCells.push({
       dateStr,
       dayNum: i,
@@ -332,7 +362,8 @@ export default function AppointmentsPage() {
     });
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const todayStr = formatYMD(now.getFullYear(), now.getMonth(), now.getDate());
 
   // Appointments for the currently selected day in calendar view
   const selectedDayAppointments = appointments.filter(a => {
@@ -385,6 +416,23 @@ export default function AppointmentsPage() {
               <span>Calendar View</span>
             </button>
           </div>
+
+          <Button
+            onClick={async () => {
+              setIsSyncing(true);
+              await syncAppointments();
+              setTimeout(() => {
+                setIsSyncing(false);
+                toast.success('Appointments synced with WhatsApp server!');
+              }, 400);
+            }}
+            variant="outline"
+            disabled={isSyncing}
+            className="text-xs font-semibold gap-1.5 shadow-xs text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+          >
+            <RefreshCcw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin text-emerald-600' : ''}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync Server'}</span>
+          </Button>
 
           <Button
             onClick={() => {
@@ -524,13 +572,18 @@ export default function AppointmentsPage() {
                         </TableCell>
 
                         <TableCell>
-                          <div className="flex flex-col">
+                          <div className="flex flex-col gap-0.5">
                             <span className="text-xs font-bold text-foreground">{appt.patient_name}</span>
-                            {appt.id.startsWith('appt-') && (
-                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
-                                <Sparkles className="h-2.5 w-2.5" /> Booked by AI
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded bg-primary/10 text-[10px] font-mono font-bold text-primary border border-primary/20">
+                                {appt.booking_id || (appt.id.startsWith('LF-') ? appt.id : `LF-${(appt.date || '').replace(/\D/g, '') || '20261007'}-${appt.id.slice(-4)}`)}
                               </span>
-                            )}
+                              {appt.id.startsWith('appt-') && (
+                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
+                                  <Sparkles className="h-2.5 w-2.5" /> Booked by AI
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
 
@@ -666,6 +719,22 @@ export default function AppointmentsPage() {
                                 <span>In Follow-Ups ➔</span>
                               </Link>
                             )}
+
+                            {/* Delete Appointment Button */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete the appointment for ${appt.patient_name}?`)) {
+                                  deleteAppointment(appt.id);
+                                  toast.success(`Appointment for ${appt.patient_name} deleted`);
+                                }
+                              }}
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 dark:hover:bg-red-950/40 transition-colors"
+                              title="Delete Appointment"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -894,7 +963,12 @@ export default function AppointmentsPage() {
                         </span>
                         <div>
                           <p className="text-xs font-bold text-foreground">{appt.patient_name}</p>
-                          <p className="text-[11px] text-muted-foreground">{appt.phone_number}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-mono font-semibold text-primary">
+                              {appt.booking_id || (appt.id.startsWith('LF-') ? appt.id : `LF-${(appt.date || '').replace(/\D/g, '') || '20261007'}-${appt.id.slice(-4)}`)}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">• {appt.phone_number}</span>
+                          </div>
                         </div>
                       </div>
                       <span className="text-xs font-semibold px-2 py-0.5 rounded bg-primary/10 text-primary">
@@ -931,12 +1005,27 @@ export default function AppointmentsPage() {
                       </Button>
 
                       <Link
-                        href="/demo"
-                        className="inline-flex items-center justify-center h-7 px-2 rounded-lg bg-muted text-foreground text-xs hover:bg-muted/80"
-                        title="Open AI Chat"
+                        href={`/inbox?phone=${encodeURIComponent(appt.phone_number || '')}&name=${encodeURIComponent(appt.patient_name || '')}`}
+                        className="inline-flex items-center justify-center h-7 px-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs hover:bg-emerald-500/20 font-semibold"
+                        title="Open Live WhatsApp Chat in Inbox"
                       >
-                        <MessageSquare className="h-3 w-3" />
+                        <MessageSquare className="h-3.5 w-3.5" />
                       </Link>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          if (window.confirm(`Are you sure you want to delete the appointment for ${appt.patient_name}?`)) {
+                            deleteAppointment(appt.id);
+                            toast.success(`Appointment for ${appt.patient_name} deleted`);
+                          }
+                        }}
+                        className="text-[11px] h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-500/10"
+                        title="Delete Appointment"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -1205,12 +1294,17 @@ export default function AppointmentsPage() {
             </div>
 
             <div className="space-y-2.5 text-xs">
-              <div className="p-3 rounded-xl bg-muted/40 border border-border space-y-1">
+              <div className="p-3 rounded-xl bg-muted/40 border border-border space-y-1.5">
                 <div className="flex justify-between font-bold text-foreground">
                   <span>{inspectionAppt.patient_name}</span>
                   <span className="text-primary">{inspectionAppt.time}</span>
                 </div>
-                <p className="text-muted-foreground font-mono">{inspectionAppt.phone_number}</p>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground font-mono">{inspectionAppt.phone_number}</span>
+                  <span className="font-mono font-bold text-[10.5px] px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                    Booking ID: {inspectionAppt.booking_id || (inspectionAppt.id.startsWith('LF-') ? inspectionAppt.id : `LF-${(inspectionAppt.date || '').replace(/\D/g, '') || '20261007'}-${inspectionAppt.id.slice(-4)}`)}
+                  </span>
+                </div>
                 <p className="text-foreground pt-1">Date: <strong>{inspectionAppt.date}</strong></p>
               </div>
 

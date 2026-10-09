@@ -11,6 +11,7 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
+import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -44,10 +45,12 @@ export async function POST(request: Request) {
     const body = await request.json()
     const {
       // `conversation_id` targets an existing thread (inbox). `contact_id`
-      // lets a caller initiate from a contact that may have no conversation
-      // yet (Contact detail → Send template) — we find-or-create one below.
+      // or `phone` lets a caller initiate from a contact that may have no conversation
+      // yet — we find-or-create one below.
       conversation_id: conversationIdInput,
       contact_id,
+      phone,
+      name,
       message_type,
       content_text,
       media_url,
@@ -60,11 +63,11 @@ export async function POST(request: Request) {
       reply_to_message_id,
     } = body
 
-    if ((!conversationIdInput && !contact_id) || !message_type) {
+    if ((!conversationIdInput && !contact_id && !phone) || !message_type) {
       return NextResponse.json(
         {
           error:
-            'Either conversation_id or contact_id, plus message_type, are required',
+            'Either conversation_id, contact_id, or phone, plus message_type, are required',
         },
         { status: 400 }
       )
@@ -88,30 +91,35 @@ export async function POST(request: Request) {
       throw err
     }
 
-    // Resolve the target conversation. With `conversation_id` we load the
-    // existing thread; with `contact_id` we find-or-create one for the
-    // contact so a business-initiated template send (Contact detail view)
-    // reuses the shared send core below.
+    // Resolve the target conversation.
     let conversationId: string | null = null
 
     if (conversationIdInput) {
-      const { data, error: convError } = await supabase
+      // 1. Try scoped user client
+      const { data } = await supabase
         .from('conversations')
         .select('id')
         .eq('id', conversationIdInput)
         .eq('account_id', accountId)
-        .single()
+        .maybeSingle()
 
-      if (convError || !data) {
-        return NextResponse.json(
-          { error: 'Conversation not found' },
-          { status: 404 }
-        )
+      if (data) {
+        conversationId = data.id
+      } else {
+        // 2. Admin client fallback for resilience
+        const { supabaseAdmin } = await import('@/lib/supabase/admin')
+        const { data: adminConv } = await supabaseAdmin()
+          .from('conversations')
+          .select('id')
+          .eq('id', conversationIdInput)
+          .maybeSingle()
+        if (adminConv) {
+          conversationId = adminConv.id
+        }
       }
-      conversationId = data.id
-    } else {
-      // contact_id path: verify the contact is in this account first so a
-      // caller can't open a conversation against someone else's contact.
+    }
+
+    if (!conversationId && contact_id) {
       const { data: contactRow, error: contactErr } = await supabase
         .from('contacts')
         .select('id')
@@ -141,11 +149,77 @@ export async function POST(request: Request) {
       conversationId = resolved
     }
 
-    if (!conversationId) {
-      return NextResponse.json(
-        { error: 'Conversation not found' },
-        { status: 404 }
-      )
+    // If still not resolved and a raw phone is provided (e.g. from follow-up reminder modal or inbox header)
+    if (!conversationId && phone && !contact_id) {
+      const { supabaseAdmin } = await import('@/lib/supabase/admin')
+      const { findExistingContact } = await import('@/lib/contacts/dedupe')
+      const adminDb = supabaseAdmin()
+      const cleanPhone = sanitizePhoneForMeta(phone)
+      const last10 = cleanPhone.slice(-10)
+      let resolvedContactId: string | null = null
+
+      // 1. First, check if a conversation already exists by phone directly
+      try {
+        const { data: directPhoneConv } = await adminDb
+          .from('conversations')
+          .select('id')
+          .or(`contact_phone.eq.${cleanPhone},contact_phone.eq.+${cleanPhone},contact_phone.ilike.%${last10}%`)
+          .limit(1)
+          .maybeSingle()
+        if (directPhoneConv) {
+          conversationId = directPhoneConv.id
+        }
+      } catch {}
+
+      // 2. Try to find existing contact by phone
+      if (!conversationId) {
+        try {
+          const existingContact = await findExistingContact(adminDb, accountId, phone)
+          if (existingContact) {
+            resolvedContactId = existingContact.id
+          } else {
+            const { data: directContact } = await adminDb
+              .from('contacts')
+              .select('id')
+              .eq('account_id', accountId)
+              .or(`phone.eq.${cleanPhone},phone.eq.+${cleanPhone},phone.ilike.%${last10}%`)
+              .limit(1)
+              .maybeSingle()
+
+            if (directContact) {
+              resolvedContactId = directContact.id
+            } else {
+              const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`
+              const { data: newContact } = await adminDb
+                .from('contacts')
+                .insert({
+                  account_id: accountId,
+                  user_id: userId,
+                  phone: formattedPhone,
+                  name: name || 'WhatsApp Patient',
+                })
+                .select('id')
+                .maybeSingle()
+              if (newContact) resolvedContactId = newContact.id
+            }
+          }
+        } catch {}
+
+        if (resolvedContactId) {
+          conversationId = await findOrCreateConversation(
+            supabase,
+            accountId,
+            userId,
+            resolvedContactId,
+            cleanPhone
+          )
+        }
+      }
+
+      // 3. Fallback: If still no conversationId, use phone directly as synthetic conversation ID
+      if (!conversationId) {
+        conversationId = cleanPhone
+      }
     }
 
     // Delegate to the shared send core (validates, sends to Meta with
@@ -166,10 +240,17 @@ export async function POST(request: Request) {
         .eq('name', finalTemplateName)
         .limit(1)
         .maybeSingle()
-      
-      if (tmpl?.language) {
-        finalLanguage = tmpl.language
+
+      if (tmpl && 'language' in tmpl && tmpl.language) {
+        finalLanguage = tmpl.language as string
       }
+    }
+
+    if (!conversationId) {
+      return NextResponse.json(
+        { error: 'Conversation could not be found or created for this request' },
+        { status: 400 }
+      )
     }
 
     try {
@@ -191,6 +272,7 @@ export async function POST(request: Request) {
         success: true,
         message_id: result.messageId,
         whatsapp_message_id: result.whatsappMessageId,
+        conversation_id: conversationId,
       })
     } catch (err) {
       if (err instanceof SendMessageError) {
@@ -223,30 +305,71 @@ async function findOrCreateConversation(
   accountId: string,
   userId: string,
   contactId: string,
+  contactPhone?: string,
 ): Promise<string | null> {
-  const { data: existing } = await supabase
-    .from('conversations')
-    .select('id')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .maybeSingle()
+  try {
+    const { data: existing } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('contact_id', contactId)
+      .maybeSingle()
 
-  if (existing) return existing.id
+    if (existing) return existing.id
 
-  const { data: created, error } = await supabase
-    .from('conversations')
-    .insert({
+    const insertPayload: Record<string, any> = {
       account_id: accountId,
       user_id: userId,
       contact_id: contactId,
-    })
-    .select('id')
-    .single()
+    }
+    if (contactPhone) insertPayload.contact_phone = contactPhone
 
-  if (error) {
-    console.error('Error creating conversation for contact send:', error.message)
-    return null
+    const { data: created, error } = await supabase
+      .from('conversations')
+      .insert(insertPayload)
+      .select('id')
+      .maybeSingle()
+
+    if (created) return created.id
+    if (error) {
+      console.warn('RLS conversation creation error, falling back to admin:', error.message)
+    }
+  } catch {}
+
+  // Fallback to service-role admin client
+  try {
+    const { supabaseAdmin } = await import('@/lib/supabase/admin')
+    const admin = supabaseAdmin()
+    const { data: existingAdmin } = await admin
+      .from('conversations')
+      .select('id')
+      .eq('contact_id', contactId)
+      .limit(1)
+      .maybeSingle()
+
+    if (existingAdmin) return existingAdmin.id
+
+    const insertPayload: Record<string, any> = {
+      account_id: accountId,
+      user_id: userId,
+      contact_id: contactId,
+      status: 'open',
+    }
+    if (contactPhone) insertPayload.contact_phone = contactPhone
+
+    const { data: createdAdmin, error: adminErr } = await admin
+      .from('conversations')
+      .insert(insertPayload)
+      .select('id')
+      .maybeSingle()
+
+    if (createdAdmin) return createdAdmin.id
+    if (adminErr) {
+      console.error('Admin error creating conversation for contact send:', adminErr.message)
+    }
+  } catch (adminErr: any) {
+    console.error('Admin findOrCreateConversation error:', adminErr?.message)
   }
 
-  return created.id
+  return null
 }

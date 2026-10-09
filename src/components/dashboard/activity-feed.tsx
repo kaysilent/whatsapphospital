@@ -105,7 +105,7 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                     {it.text}
                   </span>
-                  <span className="flex-shrink-0 text-xs text-muted-foreground tabular-nums">
+                  <span className="flex-shrink-0 text-xs text-muted-foreground tabular-nums" suppressHydrationWarning>
                     {relativeTime(it.at, t)}
                   </span>
                 </div>

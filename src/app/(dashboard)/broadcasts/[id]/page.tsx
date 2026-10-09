@@ -39,6 +39,7 @@ import {
   getRecipientStatus,
 } from '@/lib/broadcast-status';
 import { useTranslations } from 'next-intl';
+import * as XLSX from 'xlsx';
 
 interface StatCardProps {
   label: string;
@@ -199,7 +200,7 @@ export default function BroadcastDetailPage() {
     [recipients, statusFilter],
   );
 
-  function handleExport() {
+  function handleExportCsv() {
     if (!broadcast) return;
     const header = [
       t('table.contact'),
@@ -222,6 +223,28 @@ export default function BroadcastDetailPage() {
     const csv = toCsv([header, ...rows]);
     const safeName = broadcast.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
     downloadBlob(`broadcast-${safeName}-${broadcastId.slice(0, 8)}.csv`, csv);
+  }
+
+  function handleExportExcel() {
+    if (!broadcast || recipients.length === 0) return;
+    const rows = recipients.map((r, idx) => ({
+      '#': idx + 1,
+      'Patient Name': r.contact?.name ?? 'Unknown',
+      'Phone Number': r.contact?.phone ?? '',
+      'Delivery Status': r.status,
+      'Sent At': r.sent_at ? new Date(r.sent_at).toLocaleString() : '',
+      'Delivered At': r.delivered_at ? new Date(r.delivered_at).toLocaleString() : '',
+      'Read At': r.read_at ? new Date(r.read_at).toLocaleString() : '',
+      'Error Detail': r.error_message ?? '',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Delivery_Report');
+
+    const safeName = broadcast.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
+    XLSX.writeFile(workbook, `broadcast-${safeName}-${broadcastId.slice(0, 8)}.xlsx`);
+    toast.success('Excel delivery report downloaded!');
   }
 
   async function handleDelete() {
@@ -449,11 +472,21 @@ export default function BroadcastDetailPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleExport}
+              onClick={handleExportExcel}
               disabled={recipients.length === 0}
               className="border-border text-muted-foreground hover:bg-muted"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-3.5 w-3.5 mr-1" />
+              Export Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCsv}
+              disabled={recipients.length === 0}
+              className="border-border text-muted-foreground hover:bg-muted"
+            >
+              <Download className="h-3.5 w-3.5 mr-1" />
               {t('exportCsv')}
             </Button>
           </div>

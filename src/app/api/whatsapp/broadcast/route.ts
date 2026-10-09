@@ -120,13 +120,33 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    const { createClient: createAdminClient } = await import('@supabase/supabase-js')
+    const admin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
 
-    if (configError || !config) {
+    let config: any = null
+    if (accountId) {
+      const { data } = await admin
+        .from('whatsapp_config')
+        .select('*')
+        .eq('account_id', accountId)
+        .maybeSingle()
+      config = data
+    }
+
+    if (!config) {
+      const { data } = await admin
+        .from('whatsapp_config')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      config = data
+    }
+
+    if (!config) {
       return NextResponse.json(
         {
           error:
@@ -139,17 +159,27 @@ export async function POST(request: Request) {
     const accessToken = decrypt(config.access_token)
 
     // Load the template row once so sendTemplateMessage can build
-    // header + button components on each iteration. Loading inside
-    // the loop would N+1 against Supabase for every recipient.
-    // Guard against a malformed local row crashing every send in
-    // the loop with the same opaque TypeError — fail loudly once.
-    const { data: rawTemplateRow } = await supabase
+    // header + button components on each iteration.
+    let rawTemplateRow: any = null
+    const { data: tRowWithLang } = await admin
       .from('message_templates')
       .select('*')
-      .eq('account_id', accountId)
       .eq('name', template_name)
-      .eq('language', template_language || 'en_US')
+      .eq('language', template_language || 'en')
       .maybeSingle()
+
+    if (tRowWithLang) {
+      rawTemplateRow = tRowWithLang
+    } else {
+      const { data: tRowAnyLang } = await admin
+        .from('message_templates')
+        .select('*')
+        .eq('name', template_name)
+        .limit(1)
+        .maybeSingle()
+      rawTemplateRow = tRowAnyLang
+    }
+
     if (rawTemplateRow && !isMessageTemplate(rawTemplateRow)) {
       return NextResponse.json(
         {

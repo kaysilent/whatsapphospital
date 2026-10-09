@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { DEFAULT_PAYMENT_CONFIG, formatThankYouMessage } from '@/lib/payments/gateway';
+import { syncAppointmentToGoogleCalendar } from '@/lib/calendar/google-calendar';
 
 export async function POST(request: Request) {
   try {
@@ -10,6 +12,17 @@ export async function POST(request: Request) {
       event = JSON.parse(rawBody);
     } catch {
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
+    }
+
+    // Razorpay Webhook HMAC Signature Verification
+    const rzpSignature = request.headers.get('x-razorpay-signature');
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (rzpSignature && webhookSecret) {
+      const expected = crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+      if (expected !== rzpSignature) {
+        console.warn('[Razorpay Webhook Signature Mismatch]');
+        return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 400 });
+      }
     }
 
     const supabase = await createClient();
@@ -39,7 +52,7 @@ export async function POST(request: Request) {
           })
           .or(`payment_link_id.eq.${paymentLinkId},phone_number.eq.${customerPhone}`);
 
-        await supabase
+        const { data: updatedAppt } = await supabase
           .from('appointments')
           .update({
             payment_status: 'paid',
@@ -48,7 +61,13 @@ export async function POST(request: Request) {
             payment_id: rzpPaymentId,
             updated_at: nowIso,
           })
-          .eq('phone_number', customerPhone);
+          .eq('phone_number', customerPhone)
+          .select()
+          .maybeSingle();
+
+        if (updatedAppt) {
+          syncAppointmentToGoogleCalendar(updatedAppt, 'create').catch(() => {});
+        }
       }
 
       return NextResponse.json({ ok: true, received: true, event: event.event });

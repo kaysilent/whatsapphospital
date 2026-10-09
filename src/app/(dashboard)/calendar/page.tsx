@@ -24,7 +24,8 @@ import {
   Activity,
   Key,
   Check,
-  Loader2
+  Loader2,
+  Copy
 } from 'lucide-react'
 import { 
   useDoctorAvailability 
@@ -60,11 +61,24 @@ export default function DoctorCalendarPage() {
     setFormData(hospitalConfig)
   }, [hospitalConfig])
 
+  useEffect(() => {
+    fetch('/api/doctor/availability')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.hospitalConfig) {
+          updateHospitalConfig(data.hospitalConfig)
+          setFormData(data.hospitalConfig)
+        }
+      })
+      .catch(() => {})
+  }, [updateHospitalConfig])
+
   // Google Calendar Integration State
   const [gcalConfig, setGcalConfig] = useState<GoogleCalendarConfig>(getGoogleCalendarConfig())
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [testResult, setTestResult] = useState<GoogleCalendarTestResult | null>(null)
   const [isSyncingAll, setIsSyncingAll] = useState(false)
+  const [copiedFeed, setCopiedFeed] = useState(false)
 
   useEffect(() => {
     fetch('/api/calendar/google')
@@ -124,42 +138,114 @@ export default function DoctorCalendarPage() {
 
   const handleSyncAllAppointments = async () => {
     setIsSyncingAll(true)
-    await new Promise(r => setTimeout(r, 600))
-    setIsSyncingAll(false)
-    toast.success('All clinic appointments successfully synchronized with Dr. Mrinalini’s Google Calendar!')
+    try {
+      const res = await fetch('/api/calendar/google/events')
+      const data = await res.json()
+      if (res.ok) {
+        const count = data.events?.length || data.totalEvents || data.count || 0
+        toast.success(`Verified ${count} live appointments ready in feed! Make sure you subscribe to the Live Auto-Sync Feed below.`)
+      } else {
+        toast.error(data.error || 'Failed to sync with Google Calendar')
+      }
+    } catch (err: any) {
+      toast.error('Sync request failed: ' + (err?.message || 'Network error'))
+    } finally {
+      setIsSyncingAll(false)
+    }
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     updateHospitalConfig(formData)
+    let doctorUpdates: any = {}
     if (formData.status === 'holiday') {
-      updateActiveDoctor({
+      doctorUpdates = {
         status: 'holiday',
         startDate: formData.holidayStartDate,
         endDate: formData.holidayEndDate,
         reason: formData.holidayReason
-      })
+      }
+      updateActiveDoctor(doctorUpdates)
     } else if (formData.status === 'offline') {
-      updateActiveDoctor({
+      doctorUpdates = {
         status: 'away',
         endTime: formData.offlineReturnTime,
         reason: formData.offlineReason
-      })
+      }
+      updateActiveDoctor(doctorUpdates)
     } else {
-      updateActiveDoctor({
+      doctorUpdates = {
         status: 'available',
         startDate: '',
         endDate: '',
         reason: ''
+      }
+      updateActiveDoctor(doctorUpdates)
+    }
+
+    try {
+      await fetch('/api/doctor/availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalConfig: formData,
+          doctorId: activeDoctor?.doctorId || 'doc-mrinalini',
+          ...doctorUpdates
+        })
       })
+    } catch (e) {
+      console.warn('[Save Schedule Sync Warning]:', e)
     }
 
     setSavedSuccess(true)
+    toast.success('Doctor schedule & availability successfully updated and linked to AI Receptionist!')
     setTimeout(() => setSavedSuccess(false), 3000)
   }
 
-  const handleStatusToggle = (newStatus: 'online' | 'offline' | 'holiday') => {
+  const handleStatusToggle = async (newStatus: 'online' | 'offline' | 'holiday') => {
     setHospitalStatus(newStatus)
-    setFormData(prev => ({ ...prev, status: newStatus }))
+    const updated = { ...formData, status: newStatus }
+    setFormData(updated)
+
+    let doctorUpdates: any = {}
+    if (newStatus === 'holiday') {
+      doctorUpdates = {
+        status: 'holiday',
+        startDate: updated.holidayStartDate,
+        endDate: updated.holidayEndDate,
+        reason: updated.holidayReason
+      }
+      updateActiveDoctor(doctorUpdates)
+    } else if (newStatus === 'offline') {
+      doctorUpdates = {
+        status: 'away',
+        endTime: updated.offlineReturnTime,
+        reason: updated.offlineReason
+      }
+      updateActiveDoctor(doctorUpdates)
+    } else {
+      doctorUpdates = {
+        status: 'available',
+        startDate: '',
+        endDate: '',
+        reason: ''
+      }
+      updateActiveDoctor(doctorUpdates)
+    }
+
+    try {
+      await fetch('/api/doctor/availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalConfig: updated,
+          doctorId: activeDoctor?.doctorId || 'doc-mrinalini',
+          ...doctorUpdates
+        })
+      })
+    } catch (e) {
+      console.warn('[Toggle Status Sync Warning]:', e)
+    }
+
     setSavedSuccess(true)
     setTimeout(() => setSavedSuccess(false), 3000)
   }
@@ -822,6 +908,80 @@ export default function DoctorCalendarPage() {
                   <span>Save Calendar Settings</span>
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* Live RFC 5545 iCalendar Subscription Card */}
+          <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shrink-0">
+                  <CalendarDays className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm sm:text-base font-bold text-foreground flex items-center gap-2">
+                    <span>Live Google Calendar Auto-Sync Feed</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 border border-blue-500/20">iCal / RFC 5545</span>
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Subscribe once in your Google Calendar app. Any appointment created, rescheduled, or cancelled automatically reflects in your Google Calendar.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const feedUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/calendar/google/feed`
+                    navigator.clipboard.writeText(feedUrl)
+                    setCopiedFeed(true)
+                    setTimeout(() => setCopiedFeed(false), 2500)
+                    toast.success('Feed URL copied! In Google Calendar, click "+" next to "Other calendars" and choose "From URL".')
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-colors shadow-2xs"
+                >
+                  {copiedFeed ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5 text-blue-600" />}
+                  <span>{copiedFeed ? 'Feed URL Copied!' : 'Copy Feed Link'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const feedUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/calendar/google/feed`
+                    navigator.clipboard.writeText(feedUrl)
+                    toast.success('Feed link copied to clipboard! Opening Google Calendar Add URL page...')
+                    window.open('https://calendar.google.com/calendar/u/0/r/settings/addbyurl', '_blank')
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span>1-Click Add in Google Calendar</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Step-by-step subscription instructions */}
+            <div className="p-3.5 rounded-xl bg-background/80 border border-blue-500/20 text-xs space-y-2">
+              <div className="flex items-center gap-1.5 font-bold text-foreground text-[12px]">
+                <Sparkles className="h-3.5 w-3.5 text-blue-600" />
+                <span>How to show all clinic appointments in your Google Calendar in 30 seconds:</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-[11px] leading-relaxed">
+                <li>Click <strong className="text-foreground">Copy Feed Link</strong> above (or click <strong className="text-foreground">1-Click Add in Google Calendar</strong>).</li>
+                <li>In Google Calendar (<span className="font-mono text-[10px]">calendar.google.com</span>), on the left sidebar look for <strong className="text-foreground">"Other calendars"</strong> and click the <strong className="text-foreground">+</strong> icon ➔ choose <strong className="text-foreground">"From URL"</strong>.</li>
+                <li>Paste the copied URL (<span className="font-mono text-[10px] text-blue-600">/api/calendar/google/feed</span>) and click <strong className="text-foreground">"Add calendar"</strong>.</li>
+              </ol>
+              <p className="text-[10px] text-muted-foreground italic border-t border-border/50 pt-1.5">
+                * Note: Google protects personal Gmail calendars from direct third-party write access without subscription. Once subscribed above, all past, present, and new WhatsApp appointments will automatically display in your Google Calendar app.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-background/90 border border-border/80 font-mono text-[11px] text-muted-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-2 overflow-hidden">
+              <span className="truncate">{typeof window !== 'undefined' ? `${window.location.origin}/api/calendar/google/feed` : '/api/calendar/google/feed'}</span>
+              <span className="text-[10px] text-blue-600 dark:text-blue-400 font-sans font-semibold shrink-0">
+                15-Min Doctor Reminders Included
+              </span>
             </div>
           </div>
         </div>

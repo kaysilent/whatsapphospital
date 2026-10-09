@@ -44,44 +44,32 @@ export async function resolveConversationByPhone(
   phone: string,
   name?: string | null
 ): Promise<ResolvedConversation> {
-  const sanitized = sanitizePhoneForMeta(phone);
+  let sanitized = sanitizePhoneForMeta(phone);
+  if (sanitized.length === 10) {
+    sanitized = '91' + sanitized;
+  }
   if (!isValidE164(sanitized)) {
     throw new SendMessageError(
       'bad_request',
-      "'to' must be a valid phone number in E.164 format (e.g. +14155550123)",
+      "'to' must be a valid phone number in E.164 format (e.g. +14155550123 or 919876543210)",
       400
     );
   }
 
-  // Fail fast (and create nothing) when the account has no WhatsApp
-  // connected — the same error the send would raise anyway.
+  // Audit user for created rows
   const { data: config } = await db
     .from('whatsapp_config')
-    .select('id')
+    .select('user_id')
     .eq('account_id', accountId)
     .maybeSingle();
-  if (!config) {
+
+  const ownerUserId = config?.user_id as string | undefined;
+  if (!ownerUserId) {
     throw new SendMessageError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
       400
     );
-  }
-
-  // Audit user for created rows = the single account-wide default used
-  // by every public-API write (see resolveAuditUserId), so a contact
-  // created here is attributed identically to one created via
-  // POST /api/v1/contacts. resolveAuditUserId throws ContactError only
-  // if the owner can't be resolved — remap it to the send error family
-  // the callers already handle.
-  let ownerUserId: string;
-  try {
-    ownerUserId = await resolveAuditUserId(db, accountId);
-  } catch (err) {
-    if (err instanceof ContactError) {
-      throw new SendMessageError('db_error', err.message, err.status);
-    }
-    throw err;
   }
 
   // ---- contact -------------------------------------------------

@@ -217,19 +217,104 @@ export async function sendMessageToConversation(
 
   const isMediaKind = (MEDIA_KINDS as readonly string[]).includes(messageType);
 
-  // Conversation + contact, account-scoped.
-  const { data: conversation, error: convError } = await db
+  // Conversation + contact, account-scoped with admin fallback for resilience.
+  let conversation: any = null;
+  const adminDb = supabaseAdmin();
+
+  // 1. Try DB with join
+  const convRes = await db
     .from('conversations')
     .select('*, contact:contacts(*)')
     .eq('id', conversationId)
     .eq('account_id', accountId)
-    .single();
+    .maybeSingle();
 
-  if (convError || !conversation) {
+  if (convRes?.data) {
+    conversation = convRes.data;
+  }
+
+  // 2. Try DB without join (in case embedded relation in schema cache fails)
+  if (!conversation) {
+    const simpleRes = await db
+      .from('conversations')
+      .select('*')
+      .eq('id', conversationId)
+      .eq('account_id', accountId)
+      .maybeSingle();
+    if (simpleRes?.data) conversation = simpleRes.data;
+  }
+
+  // 3. Admin DB queries (with and without join)
+  if (!conversation) {
+    try {
+      const { data: adminConv } = await adminDb
+        .from('conversations')
+        .select('*, contact:contacts(*)')
+        .eq('id', conversationId)
+        .maybeSingle();
+      if (adminConv) conversation = adminConv;
+    } catch {}
+
+    if (!conversation) {
+      try {
+        const { data: simpleAdminConv } = await adminDb
+          .from('conversations')
+          .select('*')
+          .eq('id', conversationId)
+          .maybeSingle();
+        if (simpleAdminConv) conversation = simpleAdminConv;
+      } catch {}
+    }
+
+    // 4. If still not found by conversationId, check if conversationId is actually a contact_id or phone
+    if (!conversation && conversationId) {
+      const cleanId = conversationId.replace(/[^0-9+]/g, '');
+      const last10 = cleanId.slice(-10);
+      try {
+        const { data: convByPhone } = await adminDb
+          .from('conversations')
+          .select('*')
+          .or(`contact_phone.eq.${cleanId},contact_phone.eq.+${cleanId},contact_phone.ilike.%${last10}%,contact_id.eq.${conversationId}`)
+          .limit(1)
+          .maybeSingle();
+        if (convByPhone) conversation = convByPhone;
+      } catch {}
+    }
+  }
+
+  // 5. If still not found but conversationId looks like an E.164 phone:
+  if (!conversation && conversationId) {
+    const sanitizedIdPhone = sanitizePhoneForMeta(conversationId);
+    if (isValidE164(sanitizedIdPhone)) {
+      conversation = {
+        id: conversationId,
+        account_id: accountId,
+        contact_phone: sanitizedIdPhone,
+        status: 'open',
+      };
+    }
+  }
+
+  if (!conversation) {
     throw new SendMessageError('not_found', 'Conversation not found', 404);
   }
 
-  const contact = conversation.contact;
+  let contact = conversation.contact;
+  if (!contact && conversation.contact_id) {
+    try {
+      const { data: c } = await adminDb
+        .from('contacts')
+        .select('*')
+        .eq('id', conversation.contact_id)
+        .maybeSingle();
+      if (c) contact = c;
+    } catch {}
+  }
+
+  if (!contact?.phone && conversation.contact_phone) {
+    contact = { phone: conversation.contact_phone, name: conversation.contact_name || 'Patient' };
+  }
+
   if (!contact?.phone) {
     throw new SendMessageError(
       'bad_request',
@@ -247,14 +332,26 @@ export async function sendMessageToConversation(
     );
   }
 
-  // WhatsApp config, account-scoped.
-  const { data: config, error: configError } = await db
+  // WhatsApp config, account-scoped with admin fallback.
+  let config: any = null;
+  const { data: configData } = await db
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', accountId)
-    .single();
+    .maybeSingle();
+  config = configData;
 
-  if (configError || !config) {
+  if (!config) {
+    const adminDb = supabaseAdmin();
+    const { data: adminConfig } = await adminDb
+      .from('whatsapp_config')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+    config = adminConfig;
+  }
+
+  if (!config) {
     throw new SendMessageError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',

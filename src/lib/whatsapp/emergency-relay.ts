@@ -44,7 +44,13 @@ const URGENT_KEYWORDS = [
   'urgent', 'urgent doctor', 'bleeding', 'infection', 'pus oozing', 'pus', 'severe swelling',
   'swelling', 'high fever', 'fever', 'burning sensation', 'severe burning', 'burning', 
   'redness spreading', 'blisters', 'rash all over', 'severe rash', 'extreme pain', 
-  'vomiting blood', 'wound opened', 'stitches opened', 'help me doctor', 'complication'
+  'vomiting blood', 'wound opened', 'stitches opened', 'help me doctor', 'complication',
+  'connect with doctor', 'connect to doctor', 'connect me with doctor', 'connect me to doctor',
+  'talk to doctor', 'talk to the doctor', 'talk with doctor', 'talk with the doctor',
+  'speak to doctor', 'speak to the doctor', 'speak with doctor', 'speak with the doctor',
+  'call doctor', 'call the doctor', 'need doctor', 'doctor needed', 'doctor urgent',
+  'urgent doctor call', 'speak with dr', 'talk with dr', 'connect with dr', 'talk to dr',
+  'speak to dr', 'connect to dr', 'human doctor', 'transfer to doctor'
 ];
 
 /**
@@ -109,7 +115,7 @@ export function formatDoctorEmergencyAlert(params: {
   reason: string;
   doctorName?: string;
 }): string {
-  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeStr = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
   const deptLine = params.department ? `• *Treatment Context:* ${params.department}${params.sittingInfo ? ` (${params.sittingInfo})` : ''}` : '• *Department:* Urgent Patient Care';
 
   return `🚨 *URGENT PATIENT EMERGENCY ALERT*
@@ -132,7 +138,7 @@ The CRM will instantly relay your message directly to ${params.patientName}'s Wh
 /**
  * Immediate triage response sent to the patient while the doctor is alerted
  */
-export function formatPatientEmergencyAutoReply(doctorName = 'Dr. Ananya Sharma'): string {
+export function formatPatientEmergencyAutoReply(doctorName = 'On-Call Doctor'): string {
   return `🚨 *Emergency Alert Dispatched to Doctor*
 
 We have immediately alerted *${doctorName}* on WhatsApp with your message. The doctor is reviewing your concern and will reply directly through this chat shortly.
@@ -161,7 +167,7 @@ _For emergencies, the clinic hotline is also available 24/7._`;
  * Delivery confirmation sent back to the Doctor
  */
 export function formatDoctorDeliveryConfirmation(patientName: string, patientPhone: string): string {
-  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeStr = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
   return `✅ *Delivered to Patient* (${timeStr})
 Your message has been delivered to *${patientName}* (${patientPhone}) via WhatsApp. Further messages from the patient will continue to be relayed to you.`;
 }

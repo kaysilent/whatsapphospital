@@ -12,11 +12,11 @@ describe('Hospital Profile & Treatments Engine', () => {
     expect(DEFAULT_HOSPITAL_PROFILE.name).toBe('La Fleur Aesthetic & Wellness Clinic');
     expect(DEFAULT_HOSPITAL_PROFILE.leadDoctor).toBe('Dr. Mrinalini');
     expect(DEFAULT_HOSPITAL_PROFILE.consultationFee).toBe(500);
-    expect(DEFAULT_HOSPITAL_PROFILE.advanceTokenFee).toBe(300);
-    expect(DEFAULT_HOSPITAL_PROFILE.clinicBalanceFee).toBe(200);
+    expect(DEFAULT_HOSPITAL_PROFILE.advanceTokenFee).toBe(100);
+    expect(DEFAULT_HOSPITAL_PROFILE.clinicBalanceFee).toBe(400);
     expect(DEFAULT_HOSPITAL_PROFILE.currency).toBe('₹');
-    expect(DEFAULT_HOSPITAL_PROFILE.address).toContain('Outer Ring Road');
-    expect(DEFAULT_HOSPITAL_PROFILE.city).toBe('Bangalore');
+    expect(DEFAULT_HOSPITAL_PROFILE.address).toContain('Jubilee hills');
+    expect(DEFAULT_HOSPITAL_PROFILE.city).toBe('Hyderabad');
   });
 
   it('provides default clinical treatments covering aesthetic & dermatology domains', () => {
@@ -24,20 +24,20 @@ describe('Hospital Profile & Treatments Engine', () => {
     
     const hydra = DEFAULT_TREATMENTS.find(t => t.id === 'trt-hydrafacial');
     expect(hydra).toBeDefined();
-    expect(hydra?.category).toBe('Skin');
+    expect(hydra?.category).toBe('Dermatology & Skin Care');
     expect(hydra?.price).toBe(3500);
     expect(hydra?.recommendedSittings).toBe(3);
     expect(hydra?.sittingInterval).toBe('4 weeks');
 
     const lhr = DEFAULT_TREATMENTS.find(t => t.id === 'trt-lhr');
     expect(lhr).toBeDefined();
-    expect(lhr?.category).toBe('Laser');
+    expect(lhr?.category).toBe('Laser & Aesthetics');
     expect(lhr?.price).toBe(4999);
     expect(lhr?.recommendedSittings).toBe(6);
 
     const botox = DEFAULT_TREATMENTS.find(t => t.id === 'trt-botox');
     expect(botox).toBeDefined();
-    expect(botox?.category).toBe('Aesthetic');
+    expect(botox?.category).toBe('Anti-Aging & Cosmetology');
     expect(botox?.price).toBe(8500);
   });
 
@@ -48,11 +48,11 @@ describe('Hospital Profile & Treatments Engine', () => {
     expect(text).toContain('Hospital Name: La Fleur Aesthetic & Wellness Clinic');
     expect(text).toContain('Sole Doctor: Dr. Mrinalini');
     expect(text).toContain('Consultation Fee: ₹500');
-    expect(text).toContain('Address: Suite 402, Green Glen Towers, Outer Ring Road, Bangalore - 560103');
+    expect(text).toContain('Address: Road No.11 B, Jubilee hills, 500045., Hyderabad - 500045');
     expect(text).toContain('=== ACTIVE TREATMENTS & PROCEDURES CATALOG');
-    expect(text).toContain('HydraFacial Deluxe [Skin]');
-    expect(text).toContain('Laser Hair Reduction [Laser]');
-    expect(text).toContain('PRP Hair Therapy & Scalp Restoration [Hair]');
+    expect(text).toContain('HydraFacial Deluxe [Dermatology & Skin Care]');
+    expect(text).toContain('Laser Hair Reduction [Laser & Aesthetics]');
+    expect(text).toContain('PRP Hair Therapy & Scalp Restoration [Trichology & Hair Restoration]');
   });
 
   it('formats custom hospital profile and dynamic treatment catalog correctly', () => {

@@ -82,16 +82,6 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
     const totalActive = openConvCur.count ?? 0
     const totalMsgs = messagesToday.count ?? 0
 
-    if (totalActive === 0 && totalMsgs === 0 && (newContactsToday.count ?? 0) === 0) {
-      return {
-        activeConversations: { current: 18, previous: 4 },
-        newContactsToday: { current: 9, previous: 6 },
-        openDealsValue: 185000,
-        openDealsCount: 14,
-        messagesSentToday: { current: 128, previous: 94 },
-      }
-    }
-
     return {
       activeConversations: {
         current: totalActive,
@@ -110,11 +100,11 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
     }
   } catch (err) {
     return {
-      activeConversations: { current: 18, previous: 4 },
-      newContactsToday: { current: 9, previous: 6 },
-      openDealsValue: 185000,
-      openDealsCount: 14,
-      messagesSentToday: { current: 128, previous: 94 },
+      activeConversations: { current: 0, previous: 0 },
+      newContactsToday: { current: 0, previous: 0 },
+      openDealsValue: 0,
+      openDealsCount: 0,
+      messagesSentToday: { current: 0, previous: 0 },
     }
   }
 }
@@ -146,24 +136,10 @@ export async function loadConversationsSeries(
       else bucket.outgoing += 1 // agent + bot both count as outgoing
     }
 
-    const totalCount = Array.from(buckets.values()).reduce((acc, b) => acc + b.incoming + b.outgoing, 0)
-    if (totalCount === 0) {
-      // Provide realistic simulated series for clinical activity
-      return keys.map((day, idx) => {
-        const baseIn = 8 + (idx % 5) * 3 + Math.floor(Math.random() * 4);
-        const baseOut = 12 + (idx % 4) * 4 + Math.floor(Math.random() * 5);
-        return { day, incoming: baseIn, outgoing: baseOut };
-      });
-    }
-
     return keys.map((day) => ({ day, ...(buckets.get(day) ?? { incoming: 0, outgoing: 0 }) }))
   } catch (err) {
     const keys = lastNDayKeys(rangeDays)
-    return keys.map((day, idx) => {
-      const baseIn = 6 + (idx % 6) * 2;
-      const baseOut = 10 + (idx % 5) * 3;
-      return { day, incoming: baseIn, outgoing: baseOut };
-    });
+    return keys.map((day) => ({ day, incoming: 0, outgoing: 0 }))
   }
 }
 

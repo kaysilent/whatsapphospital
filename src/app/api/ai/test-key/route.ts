@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     // 1. GOOGLE GEMINI TEST
     if (provider === 'gemini') {
-      const targetModel = model || 'gemini-2.5-flash';
+      const targetModel = model || 'gemini-3.5-flash';
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${cleanKey}`;
       
       const res = await fetch(geminiUrl, {
@@ -61,7 +61,10 @@ export async function POST(req: NextRequest) {
       const elapsed = Date.now() - startTime;
 
       if (!res.ok || data.error) {
-        const errorMsg = data.error?.message || `Google Gemini API returned status ${res.status}`;
+        let errorMsg = data.error?.message || `Google Gemini API returned status ${res.status}`;
+        if (errorMsg.includes('Quota exceeded') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+          errorMsg = 'Google Gemini API Quota Exceeded. Please generate a new API key in Google AI Studio (aistudio.google.com) or switch to Groq / OpenAI in Settings → AI Configuration.';
+        }
         return NextResponse.json(
           { error: errorMsg },
           { status: 400 }

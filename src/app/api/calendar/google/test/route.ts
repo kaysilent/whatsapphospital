@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const result: GoogleCalendarTestResult = {
       success: true,
       status: 'connected',
-      message: `Successfully connected to Google Calendar for ${targetEmail}. Real-time synchronization active.`,
+      message: `Google Calendar feed ready for ${targetEmail}. Subscribe to the live feed below to display all appointments in your Google Calendar app.`,
       latencyMs,
       calendarDetails: {
         id: calendarId || targetEmail,

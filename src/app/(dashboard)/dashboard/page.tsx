@@ -132,11 +132,11 @@ export default function DashboardPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Link 
-              href="/demo"
+              href="/inbox"
               className="inline-flex items-center justify-center rounded-lg bg-white text-slate-900 hover:bg-emerald-50 font-semibold shadow-md text-xs sm:text-sm h-10 px-4 transition-colors"
             >
-              <Bot className="h-4 w-4 mr-2 text-emerald-600" />
-              Launch AI Emulator
+              <MessageSquare className="h-4 w-4 mr-2 text-emerald-600" />
+              Open Live Inbox
             </Link>
             <Link 
               href="/broadcasts"

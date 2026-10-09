@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { 
   AlertTriangle, 
   AlertCircle, 
@@ -10,17 +11,19 @@ import {
   Clock, 
   UserCheck, 
   CheckCircle2,
-  Activity,
   Send,
   Sparkles,
   RefreshCw,
   Zap,
   ArrowRight,
   ShieldCheck,
-  Bot,
   Volume2,
   VolumeX,
-  BellRing
+  BellRing,
+  ExternalLink,
+  Check,
+  Inbox,
+  Plus
 } from 'lucide-react';
 import { emergencyAudio } from '@/lib/audio/emergency-audio';
 import { Button } from '@/components/ui/button';
@@ -33,30 +36,40 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { toast } from 'sonner';
 
-interface EmergencyRelayItem {
+interface EscalationAlert {
   id: string;
-  patientName: string;
-  patientPhone: string;
-  doctorName: string;
-  doctorPhone: string;
-  emergencyText: string;
-  patientTime: string;
-  doctorReplies: {
-    text: string;
-    time: string;
-    status: 'relayed_to_patient' | 'sent';
-  }[];
-  status: 'active' | 'resolved';
+  conversation_id?: string;
+  contact_id?: string;
+  patient_name: string;
+  patient_phone: string;
+  doctor_name?: string;
+  doctor_phone?: string;
+  department?: string;
+  severity: 'CRITICAL' | 'URGENT' | 'HIGH' | string;
+  emergency_text: string;
+  reason?: string;
+  status: 'ACTIVE' | 'DOCTOR_ALERTED' | 'DOCTOR_REPLIED' | 'RESOLVED';
+  doctor_replies_count?: number;
+  last_doctor_reply_text?: string;
+  last_doctor_reply_at?: string;
+  created_at: string;
 }
 
 export default function EscalationsPage() {
+  const [alerts, setAlerts] = useState<EscalationAlert[]>([]);
+  const [relaySessions, setRelaySessions] = useState<EscalationAlert[]>([]);
   const [resolvedIds, setResolvedIds] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState<'alerts' | 'relay'>('alerts');
-  const [simDoctorReply, setSimDoctorReply] = useState('');
-  const [selectedRelayId, setSelectedRelayId] = useState<string>('relay-1');
+  const [doctorReplyText, setDoctorReplyText] = useState('');
+  const [selectedRelayId, setSelectedRelayId] = useState<string | null>(null);
+  const [isSendingReply, setIsSendingReply] = useState(false);
   const [alarmState, setAlarmState] = useState(emergencyAudio.getState());
 
+  // Listen to audio alarm state
   useEffect(() => {
     const unsubscribe = emergencyAudio.subscribe((state) => {
       setAlarmState(state);
@@ -64,123 +77,177 @@ export default function EscalationsPage() {
     return unsubscribe;
   }, []);
 
-  const [relaySessions, setRelaySessions] = useState<EmergencyRelayItem[]>([
-    {
-      id: "relay-1",
-      patientName: "Vikram Malhotra",
-      patientPhone: "+91 98991 22334",
-      doctorName: "Dr. Rajesh Gupta",
-      doctorPhone: "+91 98765 43210",
-      emergencyText: "URGENT: Experiencing sudden severe rash and burning sensation 2 hours after chemical peel session!",
-      patientTime: "12:32 PM",
-      status: "active",
-      doctorReplies: [
-        {
-          text: "Wash face gently with cool running water immediately. Apply the prescribed soothing barrier cream liberally and avoid sunlight. I am reviewing your chart now and will call you in 5 mins.",
-          time: "12:35 PM",
-          status: "relayed_to_patient"
+  // Fetch real-time escalations from API
+  const fetchEscalations = useCallback(async (showLoading = false) => {
+    if (showLoading) setIsSyncing(true);
+    try {
+      const res = await fetch('/api/escalations');
+      const data = await res.json();
+      if (data && data.ok) {
+        const liveAlerts: EscalationAlert[] = data.alerts || [];
+        const liveRelays: EscalationAlert[] = data.relaySessions || [];
+        setAlerts(liveAlerts);
+        setRelaySessions(liveRelays);
+
+        if (!selectedRelayId && liveRelays.length > 0) {
+          setSelectedRelayId(liveRelays[0].id);
         }
-      ]
-    },
-    {
-      id: "relay-2",
-      patientName: "Meenakshi Sundaram",
-      patientPhone: "+91 98112 33445",
-      doctorName: "Dr. Shalini Roy",
-      doctorPhone: "+91 98765 43211",
-      emergencyText: "Bleeding slightly from scalp injection sites after today's PRP session. Is this normal?",
-      patientTime: "11:45 AM",
-      status: "active",
-      doctorReplies: [
-        {
-          text: "Mild pin-prick spotting can occur for 2-3 hours. Please use a clean sterile gauze and apply gentle firm pressure for 5 minutes. Do not rub or wash scalp today. Let me know if spotting persists.",
-          time: "11:48 AM",
-          status: "relayed_to_patient"
+
+        // Automatic Emergency Alarm Trigger:
+        // If there are active critical/urgent alerts not yet resolved and alarm is not running, trigger alarm
+        const activeUnresolved = liveAlerts.filter(a => a.status !== 'RESOLVED' && !resolvedIds.includes(a.id));
+        if (activeUnresolved.length > 0) {
+          const topAlert = activeUnresolved[0];
+          if (!emergencyAudio.getState().isRunning) {
+            emergencyAudio.startAlarm(
+              topAlert.id, 
+              `🚨 URGENT CASE: ${topAlert.patient_name} (${topAlert.patient_phone}) — ${topAlert.emergency_text}`
+            );
+          }
+        } else if (emergencyAudio.getState().isRunning) {
+          // If no active cases remain, automatically silence the alarm
+          emergencyAudio.stopAlarm();
         }
-      ]
+      }
+    } catch (err) {
+      console.warn('[Fetch Escalations Notice]:', err);
+    } finally {
+      setIsLoading(false);
+      setIsSyncing(false);
     }
-  ]);
+  }, [selectedRelayId, resolvedIds]);
 
-  const escalations = [
-    {
-      id: "esc-1",
-      patient: "Vikram Malhotra",
-      phone: "+91 98991 22334",
-      alert: "Reported sudden severe rash & burning sensation post-peel via WhatsApp",
-      severity: "Emergency (Red)",
-      sla: "Immediate",
-      department: "Dermatology / Emergency",
-      time: "4 mins ago",
-      assignedTo: "Dr. Rajesh Gupta (ER On-Duty)",
-      relayActive: true
-    },
-    {
-      id: "esc-2",
-      patient: "Aarti Mehra",
-      phone: "+91 97110 55667",
-      alert: "High grade fever (103.5°F) in 2-year old infant unresponsive to paracetamol",
-      severity: "Urgent (Yellow)",
-      sla: "10 mins remaining",
-      department: "Pediatrics",
-      time: "14 mins ago",
-      assignedTo: "Dr. Shalini Roy",
-      relayActive: false
-    },
-    {
-      id: "esc-3",
-      patient: "Kiran Bedi",
-      phone: "+91 96554 11223",
-      alert: "Post-surgery wound bleeding inquiry; patient anxious",
-      severity: "High Priority",
-      sla: "25 mins remaining",
-      department: "Orthopedics",
-      time: "32 mins ago",
-      assignedTo: "Dr. Vikrant Seth",
-      relayActive: false
-    }
-  ];
+  // Initial fetch and 4s polling
+  useEffect(() => {
+    fetchEscalations(true);
+    const interval = setInterval(() => {
+      fetchEscalations(false);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [fetchEscalations]);
 
-  const handleResolve = (id: string) => {
-    setResolvedIds(prev => {
-      const next = [...prev, id];
-      // If resolving the emergency case or all active cases, stop the alarm
-      emergencyAudio.stopAlarm(id);
-      return next;
-    });
-  };
-
+  // Manual alarm toggle for testing audio
   const handleToggleAlarmTest = () => {
     if (alarmState.isRunning) {
       emergencyAudio.stopAlarm();
+      toast.info('Emergency alarm sound silenced');
     } else {
-      emergencyAudio.startAlarm("esc-1", "🚨 ACTIVE EMERGENCY: Vikram Malhotra — Reported severe burning & rash post-peel via WhatsApp!");
+      const activeUnresolved = alerts.filter(a => a.status !== 'RESOLVED' && !resolvedIds.includes(a.id));
+      const targetAlert = activeUnresolved[0];
+      const alertId = targetAlert ? targetAlert.id : 'test-alarm-1';
+      const alertText = targetAlert 
+        ? `🚨 URGENT CASE: ${targetAlert.patient_name} (${targetAlert.patient_phone}) — ${targetAlert.emergency_text}`
+        : `🚨 LIVE CLINICAL EMERGENCY ALARM: Active monitoring test beep running.`;
+      
+      emergencyAudio.startAlarm(alertId, alertText);
+      toast.warning('Emergency alarm audio is now playing continuous beeps');
     }
   };
 
-  const handleSendDoctorReply = (sessionId: string) => {
-    if (!simDoctorReply.trim()) return;
+  // Resolve an escalation alert
+  const handleResolve = async (id: string, patientName: string) => {
+    setResolvedIds(prev => [...prev, id]);
+    emergencyAudio.stopAlarm(id);
 
-    setRelaySessions(prev => prev.map(s => {
-      if (s.id === sessionId) {
-        return {
-          ...s,
-          doctorReplies: [
-            ...s.doctorReplies,
-            {
-              text: simDoctorReply.trim(),
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              status: 'relayed_to_patient'
-            }
-          ]
-        };
+    try {
+      const res = await fetch('/api/escalations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resolve', id })
+      });
+      const data = await res.json();
+      if (data && data.ok) {
+        toast.success(`Emergency alert for ${patientName} marked as resolved & silenced.`);
+        fetchEscalations(false);
+      } else {
+        toast.error(data.error || 'Failed to update alert status');
       }
-      return s;
-    }));
-
-    setSimDoctorReply('');
+    } catch {
+      toast.error('Network error resolving alert');
+    }
   };
 
-  const activeSession = relaySessions.find(s => s.id === selectedRelayId) || relaySessions[0];
+  // Create a live test emergency
+  const handleCreateTestEmergency = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/escalations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_test',
+          testData: {
+            patientName: 'Priya Sharma (Live WhatsApp)',
+            patientPhone: '+91 98765 43210',
+            emergencyText: 'URGENT: Experiencing sudden severe skin redness & burning sensation after treatment. Need immediate guidance!',
+            severity: 'CRITICAL',
+            doctorName: 'Dr. Mrinalini'
+          }
+        })
+      });
+      const data = await res.json();
+      if (data && data.ok) {
+        toast.warning('Live Emergency Alert created! Alarm sound activated.');
+        fetchEscalations(true);
+      } else {
+        toast.error(data.error || 'Failed to trigger test alert');
+      }
+    } catch {
+      toast.error('Failed to connect to server');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Send doctor reply in WhatsApp Relay
+  const handleSendDoctorReply = async (sessionId: string) => {
+    if (!doctorReplyText.trim()) {
+      toast.error('Please type a guidance message to send to the patient');
+      return;
+    }
+
+    setIsSendingReply(true);
+    try {
+      const res = await fetch('/api/escalations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'relay_reply',
+          id: sessionId,
+          replyText: doctorReplyText.trim()
+        })
+      });
+      const data = await res.json();
+      if (data && data.ok) {
+        toast.success('Clinical guidance delivered directly to patient on WhatsApp!');
+        setDoctorReplyText('');
+        fetchEscalations(false);
+      } else {
+        toast.error(data.error || 'Failed to deliver relay message');
+      }
+    } catch {
+      toast.error('Network error sending WhatsApp relay');
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
+
+  const activeAlerts = alerts.filter(a => a.status !== 'RESOLVED' && !resolvedIds.includes(a.id));
+  const activeRelaySessions = relaySessions.filter(r => r.status !== 'RESOLVED' && !resolvedIds.includes(r.id));
+  const activeSession = relaySessions.find(s => s.id === selectedRelayId) || activeRelaySessions[0] || relaySessions[0];
+
+  const formatTimeAgo = (iso: string) => {
+    try {
+      const ms = Date.now() - new Date(iso).getTime();
+      const mins = Math.max(1, Math.floor(ms / 60000));
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      return `${Math.floor(hrs / 24)}d ago`;
+    } catch {
+      return 'Just now';
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -188,15 +255,27 @@ export default function EscalationsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
-            <AlertTriangle className="h-6 w-6 text-rose-600 dark:text-rose-400 animate-pulse" />
+            <AlertTriangle className={`h-6 w-6 ${activeAlerts.length > 0 ? 'text-rose-600 dark:text-rose-400 animate-pulse' : 'text-primary'}`} />
             Urgent Clinical Escalations & WhatsApp Emergency Relay
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Real-time emergency detection: when patients message an emergency on WhatsApp, the CRM alerts the on-duty doctor and plays an audible alarm beep until the clinical team checks and handles the alert.
+            Real-time emergency detection: when patients message symptoms or emergencies on WhatsApp, the CRM alerts the on-duty doctor and plays an audible alarm beep until acknowledged.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Refresh / Sync button */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => fetchEscalations(true)}
+            disabled={isSyncing}
+            className="h-8 text-xs font-semibold gap-1.5 shadow-xs border-border hover:bg-muted"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 text-primary ${isSyncing ? 'animate-spin' : ''}`} />
+            Sync Live
+          </Button>
+
           {/* Sound Alarm Test / Silence Button */}
           <Button
             size="sm"
@@ -221,10 +300,16 @@ export default function EscalationsPage() {
             )}
           </Button>
 
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400 border border-rose-500/20">
-            <span className="h-2 w-2 rounded-full bg-rose-500 animate-ping" />
-            {escalations.filter(e => !resolvedIds.includes(e.id)).length} Active Urgent Cases
+          {/* Live Cases Badge */}
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
+            activeAlerts.length > 0
+              ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+              : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+          }`}>
+            <span className={`h-2 w-2 rounded-full ${activeAlerts.length > 0 ? 'bg-rose-500 animate-ping' : 'bg-emerald-500'}`} />
+            {activeAlerts.length} Active Urgent Cases
           </span>
+
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
             <Zap className="h-3 w-3" />
             Doctor WhatsApp Relay Active
@@ -233,110 +318,154 @@ export default function EscalationsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-border pb-3">
-        <button
-          onClick={() => setActiveTab('alerts')}
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            activeTab === 'alerts'
-              ? 'bg-rose-600 text-white shadow-xs'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-          }`}
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab('alerts')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'alerts'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+            }`}
+          >
+            <ShieldAlert className="h-4 w-4" />
+            Clinical Alerts ({activeAlerts.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('relay')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'relay'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+            }`}
+          >
+            <MessageSquare className="h-4 w-4" />
+            Live Doctor-Patient WhatsApp Relay ({activeRelaySessions.length})
+          </button>
+        </div>
+
+        {/* Simulate Test Case Button */}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleCreateTestEmergency}
+          disabled={isSyncing}
+          className="h-8 text-xs font-medium gap-1 text-muted-foreground hover:text-foreground border-border hover:bg-muted"
         >
-          <ShieldAlert className="h-4 w-4" />
-          Clinical Alerts ({escalations.filter(e => !resolvedIds.includes(e.id)).length})
-        </button>
-        <button
-          onClick={() => setActiveTab('relay')}
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            activeTab === 'relay'
-              ? 'bg-emerald-600 text-white shadow-xs'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-          }`}
-        >
-          <MessageSquare className="h-4 w-4" />
-          Live Doctor-Patient WhatsApp Relay ({relaySessions.length})
-        </button>
+          <Plus className="h-3.5 w-3.5 text-rose-500" />
+          Simulate Test Emergency
+        </Button>
       </div>
 
       {activeTab === 'alerts' ? (
-        /* Escalations Table */
-        <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-xs">
-          <Table className="w-full text-xs">
-            <TableHeader>
-              <TableRow className="border-border bg-muted/40 hover:bg-muted/40">
-                <TableHead className="w-[18%] text-xs font-semibold text-muted-foreground px-3 py-3">Patient & Contact</TableHead>
-                <TableHead className="w-[13%] text-xs font-semibold text-muted-foreground px-2 py-3">Severity / Urgency</TableHead>
-                <TableHead className="w-[28%] text-xs font-semibold text-muted-foreground px-3 py-3">Flagged AI Symptom Alert</TableHead>
-                <TableHead className="w-[17%] text-xs font-semibold text-muted-foreground px-2 py-3">Doctor Assigned & Relay</TableHead>
-                <TableHead className="w-[10%] text-xs font-semibold text-muted-foreground px-2 py-3">SLA Window</TableHead>
-                <TableHead className="w-[14%] text-xs font-semibold text-muted-foreground text-right px-3 py-3">Intervention Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {escalations.map((esc) => {
-                const isResolved = resolvedIds.includes(esc.id);
-                const isEmergency = esc.severity.includes('Emergency');
-                return (
-                  <TableRow 
-                    key={esc.id} 
-                    className={`border-border hover:bg-muted/40 transition-colors ${
-                      isResolved ? 'opacity-40 bg-muted/20' : isEmergency ? 'bg-rose-500/5' : ''
-                    }`}
-                  >
-                    {/* Patient Column */}
-                    <TableCell className="px-3 py-3 align-middle whitespace-normal">
-                      <div className="flex items-center gap-2">
-                        <div className={`h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 border ${
-                          isEmergency 
-                            ? 'bg-rose-500/15 text-rose-600 border-rose-500/30' 
-                            : 'bg-primary/10 text-primary border-primary/20'
+        /* Alerts View */
+        activeAlerts.length === 0 ? (
+          /* Empty State - All Clear */
+          <div className="rounded-xl border border-border bg-card p-12 text-center shadow-xs">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-4 border border-emerald-500/20">
+              <ShieldCheck className="h-8 w-8" />
+            </div>
+            <h3 className="text-lg font-bold text-foreground">All Clear — No Active Urgent Clinical Escalations</h3>
+            <p className="text-xs sm:text-sm text-muted-foreground max-w-md mx-auto mt-1.5">
+              The AI Receptionist is actively monitoring WhatsApp messages 24/7 for acute symptoms, bleeding, severe burning, or urgent inquiries. Live cases will appear here with an automatic audible alarm.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Button
+                size="sm"
+                onClick={handleCreateTestEmergency}
+                className="h-9 px-4 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Simulate Live Test Emergency
+              </Button>
+              <Link href="/inbox">
+                <Button size="sm" variant="outline" className="h-9 px-4 text-xs font-semibold border-border hover:bg-muted gap-2">
+                  <Inbox className="h-4 w-4 text-primary" />
+                  View WhatsApp Inbox
+                </Button>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          /* Live Escalations Table */
+          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-xs">
+            <Table className="w-full text-xs">
+              <TableHeader>
+                <TableRow className="border-border bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="w-[18%] text-xs font-semibold text-muted-foreground px-3 py-3">Patient & Contact</TableHead>
+                  <TableHead className="w-[13%] text-xs font-semibold text-muted-foreground px-2 py-3">Severity / Urgency</TableHead>
+                  <TableHead className="w-[28%] text-xs font-semibold text-muted-foreground px-3 py-3">Flagged AI Symptom Alert</TableHead>
+                  <TableHead className="w-[17%] text-xs font-semibold text-muted-foreground px-2 py-3">Doctor Assigned & Relay</TableHead>
+                  <TableHead className="w-[10%] text-xs font-semibold text-muted-foreground px-2 py-3">Status / SLA</TableHead>
+                  <TableHead className="w-[14%] text-xs font-semibold text-muted-foreground text-right px-3 py-3">Intervention Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {activeAlerts.map((esc) => {
+                  const isResolved = resolvedIds.includes(esc.id);
+                  const isCritical = esc.severity === 'CRITICAL' || esc.severity.includes('Emergency');
+                  const cleanPhone = esc.patient_phone.replace(/\D/g, '');
+
+                  return (
+                    <TableRow 
+                      key={esc.id} 
+                      className={`border-border hover:bg-muted/40 transition-colors ${
+                        isResolved ? 'opacity-40 bg-muted/20' : isCritical ? 'bg-rose-500/5' : ''
+                      }`}
+                    >
+                      {/* Patient Column */}
+                      <TableCell className="px-3 py-3 align-middle whitespace-normal">
+                        <div className="flex items-center gap-2">
+                          <div className={`h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 border ${
+                            isCritical 
+                              ? 'bg-rose-500/15 text-rose-600 border-rose-500/30' 
+                              : 'bg-primary/10 text-primary border-primary/20'
+                          }`}>
+                            {(esc.patient_name || 'PT').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-foreground truncate">
+                              {esc.patient_name}
+                            </p>
+                            <p className="text-[11px] font-mono text-muted-foreground">{esc.patient_phone}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+
+                      {/* Severity Column */}
+                      <TableCell className="px-2 py-3 align-middle whitespace-normal">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold whitespace-nowrap ${
+                          isCritical
+                            ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                            : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                         }`}>
-                          {esc.patient.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <p className={`text-xs font-bold text-foreground truncate ${isResolved ? 'line-through text-muted-foreground' : ''}`}>
-                            {esc.patient}
+                          <AlertCircle className="h-3 w-3 shrink-0" />
+                          {esc.severity || 'URGENT'}
+                        </span>
+                      </TableCell>
+
+                      {/* Flagged AI Symptom Alert Column */}
+                      <TableCell className="px-3 py-3 align-middle whitespace-normal">
+                        <div className="space-y-0.5">
+                          <p className="text-xs text-foreground font-medium leading-snug break-words">
+                            {esc.emergency_text}
                           </p>
-                          <p className="text-[11px] font-mono text-muted-foreground">{esc.phone}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            <span className="font-semibold text-primary">{esc.department || 'Urgent Care'}</span> • {formatTimeAgo(esc.created_at)}
+                          </p>
                         </div>
-                      </div>
-                    </TableCell>
+                      </TableCell>
 
-                    {/* Severity Column */}
-                    <TableCell className="px-2 py-3 align-middle whitespace-normal">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold whitespace-nowrap ${
-                        isEmergency
-                          ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                          : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                      }`}>
-                        <AlertCircle className="h-3 w-3 shrink-0" />
-                        {esc.severity}
-                      </span>
-                    </TableCell>
-
-                    {/* Flagged AI Symptom Alert Column */}
-                    <TableCell className="px-3 py-3 align-middle whitespace-normal">
-                      <div className="space-y-0.5">
-                        <p className="text-xs text-foreground font-medium leading-snug break-words">
-                          {esc.alert}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">
-                          <span className="font-semibold text-primary">{esc.department}</span> • {esc.time}
-                        </p>
-                      </div>
-                    </TableCell>
-
-                    {/* Doctor Assigned & Relay Column */}
-                    <TableCell className="px-2 py-3 align-middle whitespace-normal">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-xs font-medium text-foreground">
-                          <UserCheck className="h-3 w-3 text-primary shrink-0" />
-                          <span className="break-words leading-tight">{esc.assignedTo}</span>
-                        </div>
-                        {esc.relayActive && (
+                      {/* Doctor Assigned & Relay Column */}
+                      <TableCell className="px-2 py-3 align-middle whitespace-normal">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs font-medium text-foreground">
+                            <UserCheck className="h-3 w-3 text-primary shrink-0" />
+                            <span className="break-words leading-tight">{esc.doctor_name || 'Dr. Mrinalini'}</span>
+                          </div>
                           <button
                             onClick={() => {
-                              setSelectedRelayId('relay-1');
+                              setSelectedRelayId(esc.id);
                               setActiveTab('relay');
                             }}
                             className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/20 transition-colors cursor-pointer"
@@ -345,257 +474,218 @@ export default function EscalationsPage() {
                             <Zap className="h-2.5 w-2.5 shrink-0" />
                             WhatsApp Relay Live
                           </button>
-                        )}
-                      </div>
-                    </TableCell>
+                        </div>
+                      </TableCell>
 
-                    {/* SLA Window Column */}
-                    <TableCell className="px-2 py-3 align-middle whitespace-normal">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20 whitespace-nowrap">
-                        <Clock className="h-3 w-3 shrink-0" />
-                        {esc.sla}
-                      </span>
-                    </TableCell>
+                      {/* SLA Window Column */}
+                      <TableCell className="px-2 py-3 align-middle whitespace-normal">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20 whitespace-nowrap">
+                          <Clock className="h-3 w-3 shrink-0" />
+                          Immediate
+                        </span>
+                      </TableCell>
 
-                    {/* Actions Column */}
-                    <TableCell className="px-3 py-3 align-middle whitespace-normal text-right">
-                      <div className="flex items-center justify-end gap-1.5 flex-nowrap">
-                        {esc.relayActive && (
+                      {/* Actions Column */}
+                      <TableCell className="px-3 py-3 align-middle whitespace-normal text-right">
+                        <div className="flex items-center justify-end gap-1.5 flex-nowrap">
+                          {cleanPhone && (
+                            <a href={`tel:${cleanPhone}`}>
+                              <Button
+                                size="sm"
+                                className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] gap-1 shadow-xs shrink-0 font-medium"
+                              >
+                                <PhoneCall className="h-3 w-3" />
+                                Call
+                              </Button>
+                            </a>
+                          )}
+                          <Link href={esc.conversation_id ? `/inbox?conversationId=${esc.conversation_id}` : '/inbox'}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-[11px] gap-1 border-border text-foreground hover:bg-muted shrink-0 font-medium"
+                            >
+                              <MessageSquare className="h-3 w-3 text-primary" />
+                              Chat
+                            </Button>
+                          </Link>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 px-2 text-[11px] gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 shrink-0 font-medium"
-                            onClick={() => {
-                              setSelectedRelayId('relay-1');
-                              setActiveTab('relay');
-                            }}
+                            className="h-7 px-2.5 text-[11px] shrink-0 font-bold bg-white text-rose-600 hover:bg-rose-50 border-rose-200"
+                            onClick={() => handleResolve(esc.id, esc.patient_name)}
                           >
-                            <MessageSquare className="h-3 w-3" />
-                            Relay
+                            <CheckCircle2 className="h-3.5 w-3.5 mr-0.5 text-rose-600" />
+                            Resolve & Silence
                           </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] gap-1 shadow-xs shrink-0 font-medium"
-                          disabled={isResolved}
-                        >
-                          <PhoneCall className="h-3 w-3" />
-                          Call
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={isResolved ? "ghost" : "outline"}
-                          className="h-7 px-2 text-[11px] shrink-0 font-medium"
-                          onClick={() => handleResolve(esc.id)}
-                          disabled={isResolved}
-                        >
-                          <CheckCircle2 className="h-3 w-3 mr-0.5" />
-                          {isResolved ? "Done" : "Ack"}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )
       ) : (
-        /* Emergency Relay Live Inspector & Simulator */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Active Relay List */}
-          <div className="lg:col-span-4 space-y-3">
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Active WhatsApp Relay Sessions
-            </h2>
-            <div className="space-y-2">
-              {relaySessions.map((session) => {
-                const isSelected = session.id === selectedRelayId;
-                return (
-                  <button
-                    key={session.id}
-                    onClick={() => setSelectedRelayId(session.id)}
-                    className={`w-full text-left p-3.5 rounded-xl border transition-all ${
-                      isSelected
-                        ? 'border-emerald-500 bg-emerald-500/5 shadow-xs ring-1 ring-emerald-500/30'
-                        : 'border-border bg-card hover:bg-muted/40'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-xs font-bold text-foreground">{session.patientName}</span>
+        /* Emergency Relay Live Inspector */
+        activeRelaySessions.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-12 text-center shadow-xs">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-4 border border-emerald-500/20">
+              <Zap className="h-8 w-8" />
+            </div>
+            <h3 className="text-lg font-bold text-foreground">Doctor-Patient WhatsApp Relay Ready</h3>
+            <p className="text-xs sm:text-sm text-muted-foreground max-w-md mx-auto mt-1.5">
+              When a patient reports a medical concern on WhatsApp, the system automatically alerts the doctor and relays direct doctor instructions to the patient's phone.
+            </p>
+            <div className="mt-6">
+              <Button
+                size="sm"
+                onClick={handleCreateTestEmergency}
+                className="h-9 px-4 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm gap-2"
+              >
+                <Zap className="h-4 w-4" />
+                Launch Test Relay Session
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Active Relay List */}
+            <div className="lg:col-span-4 space-y-3">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Active WhatsApp Relay Sessions ({activeRelaySessions.length})
+              </h2>
+              <div className="space-y-2">
+                {activeRelaySessions.map((session) => {
+                  const isSelected = session.id === (activeSession?.id || selectedRelayId);
+                  return (
+                    <button
+                      key={session.id}
+                      onClick={() => setSelectedRelayId(session.id)}
+                      className={`w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-500/5 shadow-xs ring-1 ring-emerald-500/30'
+                          : 'border-border bg-card hover:bg-muted/40'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-xs font-bold text-foreground">{session.patient_name}</span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-mono">{formatTimeAgo(session.created_at)}</span>
                       </div>
-                      <span className="text-[10px] text-muted-foreground font-mono">{session.patientTime}</span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
-                      {session.emergencyText}
-                    </p>
-                    <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between text-[10px]">
-                      <span className="text-primary font-medium">{session.doctorName}</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                        {session.doctorReplies.length} reply relayed
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Protocol Explanation Card */}
-            <div className="p-4 rounded-xl border border-border/80 bg-muted/20 space-y-2.5 text-xs">
-              <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                How WhatsApp Emergency Relay Works
-              </div>
-              <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground text-[11px] leading-relaxed">
-                <li><strong className="text-foreground">Patient:</strong> Sends an urgent symptom message on WhatsApp.</li>
-                <li><strong className="text-foreground">CRM AI:</strong> Detects clinical emergency keywords and alerts on-duty doctor on their WhatsApp instantly.</li>
-                <li><strong className="text-foreground">Doctor:</strong> Replies directly via WhatsApp with clinical guidance.</li>
-                <li><strong className="text-foreground">Webhook Engine:</strong> Intercepts doctor reply and delivers it to patient under the official Clinic identity.</li>
-              </ol>
-            </div>
-          </div>
-
-          {/* Real-time Relay Flow Visualizer */}
-          <div className="lg:col-span-8 rounded-xl border border-border bg-card shadow-xs p-5 space-y-5">
-            <div className="flex items-center justify-between border-b border-border pb-4">
-              <div>
-                <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-emerald-600" />
-                  Relay Flow: {activeSession.patientName} ↔ {activeSession.doctorName}
-                </h2>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Patient Phone: <span className="font-mono text-foreground">{activeSession.patientPhone}</span> • Doctor Phone: <span className="font-mono text-foreground">{activeSession.doctorPhone}</span>
-                </p>
-              </div>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                <Zap className="h-3 w-3" /> Live Synced
-              </span>
-            </div>
-
-            {/* Visual Message Stream */}
-            <div className="space-y-4 bg-muted/10 p-4 rounded-xl border border-border/60 min-h-[260px]">
-              {/* Step 1: Patient Inbound */}
-              <div className="flex gap-3 items-start">
-                <div className="h-7 w-7 rounded-full bg-rose-500/20 text-rose-600 flex items-center justify-center shrink-0 font-bold text-xs border border-rose-500/30">
-                  P
-                </div>
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-foreground">{activeSession.patientName} (Patient)</span>
-                    <span className="text-[10px] text-muted-foreground">{activeSession.patientTime}</span>
-                    <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 text-[9px] font-bold">EMERGENCY DETECTED</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-card border border-rose-500/30 text-xs text-foreground max-w-md shadow-xs">
-                    {activeSession.emergencyText}
-                  </div>
-                </div>
-              </div>
-
-              {/* Step 2: System Auto Reassurance to Patient */}
-              <div className="flex gap-3 items-start pl-6">
-                <div className="h-6 w-6 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0 font-bold text-[10px]">
-                  <Bot className="h-3.5 w-3.5" />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-muted-foreground">Clinic AI Auto-Reassurance</span>
-                    <span className="text-[10px] text-muted-foreground">Immediate</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-muted/40 border border-border text-[11px] text-muted-foreground max-w-md italic">
-                    "⚠️ Urgent message noted. We have dispatched an immediate alert to our on-duty doctor ({activeSession.doctorName}). If you have life-threatening distress, call emergency services (112/108) immediately."
-                  </div>
-                </div>
-              </div>
-
-              {/* Step 3: Dispatched to Doctor's WhatsApp */}
-              <div className="flex gap-3 items-start pl-6">
-                <div className="h-6 w-6 rounded-full bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0 font-bold text-[10px]">
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400">WhatsApp Alert Sent to {activeSession.doctorName}</span>
-                    <span className="text-[10px] text-muted-foreground">Immediate</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-foreground font-mono max-w-md">
-                    🚨 CLINICAL EMERGENCY ALERT<br />
-                    Patient: {activeSession.patientName} ({activeSession.patientPhone})<br />
-                    Message: "{activeSession.emergencyText}"<br />
-                    👉 Reply directly to this WhatsApp message to respond to the patient.
-                  </div>
-                </div>
-              </div>
-
-              {/* Step 4: Doctor Reply Relayed to Patient */}
-              {activeSession.doctorReplies.map((reply, idx) => (
-                <div key={idx} className="flex gap-3 items-start pl-6">
-                  <div className="h-7 w-7 rounded-full bg-emerald-500/20 text-emerald-600 flex items-center justify-center shrink-0 font-bold text-xs border border-emerald-500/30">
-                    Dr
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                        {activeSession.doctorName}'s WhatsApp Reply
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">{reply.time}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 text-[9px] font-bold flex items-center gap-1">
-                        <CheckCircle2 className="h-2.5 w-2.5" /> RELAYED TO PATIENT
-                      </span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-foreground max-w-md shadow-xs">
-                      <p className="text-[10px] text-muted-foreground font-semibold mb-1 uppercase tracking-wider">
-                        Delivered to patient WhatsApp as:
+                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                        {session.emergency_text}
                       </p>
-                      <p className="font-medium">
-                        👩‍⚕️ <strong>[{activeSession.doctorName}]:</strong> {reply.text}
+                      <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between text-[10px]">
+                        <span className="text-primary font-medium">{session.doctor_name || 'Dr. Mrinalini'}</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                          {session.doctor_replies_count || 0} relayed
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Selected Session Conversation & Live Reply Box */}
+            {activeSession && (
+              <div className="lg:col-span-8 rounded-xl border border-border bg-card flex flex-col shadow-xs overflow-hidden">
+                <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold text-xs">
+                      {(activeSession.patient_name || 'PT').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-foreground">{activeSession.patient_name}</h3>
+                        <span className="text-xs text-muted-foreground font-mono">{activeSession.patient_phone}</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Doctor Assigned: <span className="font-semibold text-primary">{activeSession.doctor_name || 'Dr. Mrinalini'}</span>
                       </p>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
 
-            {/* Interactive Simulation Console */}
-            <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <Zap className="h-3.5 w-3.5 text-amber-500" />
-                  Simulate Doctor's WhatsApp Response
-                </p>
-                <span className="text-[10px] text-muted-foreground">
-                  Simulates doctor texting back to Meta WhatsApp webhook
-                </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleResolve(activeSession.id, activeSession.patient_name)}
+                    className="h-8 text-xs font-semibold text-rose-600 border-rose-200 hover:bg-rose-50"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1 text-rose-600" />
+                    Mark Resolved
+                  </Button>
+                </div>
+
+                <div className="p-5 space-y-4 flex-1 overflow-y-auto max-h-[380px]">
+                  {/* Patient Inbound Emergency Message */}
+                  <div className="flex items-start gap-3">
+                    <div className="h-7 w-7 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-600 flex items-center justify-center font-bold text-[10px] shrink-0">
+                      PT
+                    </div>
+                    <div className="max-w-[85%] rounded-2xl rounded-tl-none bg-rose-500/10 border border-rose-500/20 p-3 text-xs text-foreground">
+                      <p className="font-semibold text-rose-600 dark:text-rose-400 text-[11px] mb-1">
+                        Patient Emergency WhatsApp Inquiry ({formatTimeAgo(activeSession.created_at)})
+                      </p>
+                      <p className="leading-relaxed whitespace-pre-wrap">{activeSession.emergency_text}</p>
+                    </div>
+                  </div>
+
+                  {/* Doctor Relayed Reply */}
+                  {activeSession.last_doctor_reply_text ? (
+                    <div className="flex items-start justify-end gap-3">
+                      <div className="max-w-[85%] rounded-2xl rounded-tr-none bg-emerald-500/10 border border-emerald-500/20 p-3 text-xs text-foreground text-right">
+                        <p className="font-semibold text-emerald-600 dark:text-emerald-400 text-[11px] mb-1">
+                          Relayed to Patient WhatsApp ({formatTimeAgo(activeSession.last_doctor_reply_at || activeSession.created_at)})
+                        </p>
+                        <p className="leading-relaxed whitespace-pre-wrap text-left">{activeSession.last_doctor_reply_text}</p>
+                      </div>
+                      <div className="h-7 w-7 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold text-[10px] shrink-0">
+                        DR
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-muted/40 border border-border rounded-xl text-center text-xs text-muted-foreground">
+                      Doctor has been alerted on WhatsApp. Type clinical guidance below to dispatch an immediate reply directly to the patient's phone.
+                    </div>
+                  )}
+                </div>
+
+                {/* Direct Doctor Reply Box */}
+                <div className="p-4 border-t border-border bg-muted/10 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder={`Type clinical guidance from ${activeSession.doctor_name || 'Dr. Mrinalini'} to relay directly to patient WhatsApp...`}
+                      value={doctorReplyText}
+                      onChange={(e) => setDoctorReplyText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendDoctorReply(activeSession.id);
+                        }
+                      }}
+                      className="text-xs bg-card"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => handleSendDoctorReply(activeSession.id)}
+                      disabled={isSendingReply || !doctorReplyText.trim()}
+                      className="h-9 px-4 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 gap-1.5"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      Relay WhatsApp
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Input
-                  value={simDoctorReply}
-                  onChange={(e) => setSimDoctorReply(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSendDoctorReply(activeSession.id);
-                    }
-                  }}
-                  placeholder={`Type as ${activeSession.doctorName} (e.g. 'Take anti-allergy tablet and apply ice...')`}
-                  className="text-xs h-9"
-                />
-                <Button
-                  size="sm"
-                  onClick={() => handleSendDoctorReply(activeSession.id)}
-                  disabled={!simDoctorReply.trim()}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 h-9 shrink-0 shadow-xs"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  Relay to Patient
-                </Button>
-              </div>
-            </div>
+            )}
           </div>
-        </div>
+        )
       )}
     </div>
   );
 }
-

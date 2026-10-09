@@ -51,6 +51,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   switchRole: (newRole: AccountRole) => void;
+  updateProfile: (updates: Partial<Profile>) => void;
 
   accountId: string | null;
   accountRole: AccountRole | null;
@@ -135,18 +136,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? data.account_role
           : "super_admin";
 
+        const storedCustomRole = typeof window !== "undefined" ? localStorage.getItem("wacrm_profile_role") : null;
+
         setProfile({
           id: data.id,
           full_name: data.full_name,
           email: data.email,
           avatar_url: data.avatar_url,
-          role: data.role,
+          role: data.role || storedCustomRole || "Chief Dermatologist & Aesthetic Physician",
           beta_features: data.beta_features ?? [],
           account_id: data.account_id ?? null,
           account_role: accountRole,
         });
         setAccount(accountRow);
       } else {
+        hydrateDemoSession();
         lastFetchedUserIdRef.current = null;
       }
     } catch (err) {
@@ -165,10 +169,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         let parsedDemo = demoUserStored ? JSON.parse(demoUserStored) : null;
         const validUUIDRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const demoUserId = (parsedDemo?.id && validUUIDRegex.test(parsedDemo.id)) ? parsedDemo.id : "00000000-0000-0000-0000-000000000001";
-        const demoAccountId = "00000000-0000-0000-0000-000000000002";
+        const demoUserId = (parsedDemo?.id && validUUIDRegex.test(parsedDemo.id)) ? parsedDemo.id : "7177280f-a0ad-4958-8588-5f80a8575007";
+        const demoAccountId = "56702d02-aecf-489a-a9cf-632b068f3d29";
+
         const storedRole = localStorage.getItem("wacrm_active_role") as AccountRole | null;
         const activeRole = storedRole && isAccountRole(storedRole) ? storedRole : "super_admin";
+        const customRole = localStorage.getItem("wacrm_profile_role");
 
         parsedDemo = {
           id: demoUserId,
@@ -185,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           full_name: parsedDemo.user_metadata?.full_name || "Dr. Mrinalini",
           email: parsedDemo.email || "dr.mrinalini@lafleurclinic.com",
           avatar_url: null,
-          role: "Chief Dermatologist & Aesthetic Physician",
+          role: customRole || parsedDemo.role_title || "Chief Dermatologist & Aesthetic Physician",
           beta_features: [],
           account_id: demoAccountId,
           account_role: activeRole,
@@ -317,7 +323,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setAccount(null);
-    window.location.href = "/login";
+    window.location.href = "/admin";
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -330,6 +336,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("wacrm_active_role", newRole);
     }
     setProfile((prev) => (prev ? { ...prev, account_role: newRole } : null));
+  }, []);
+
+  const updateProfile = useCallback((updates: Partial<Profile>) => {
+    setProfile((prev) => (prev ? { ...prev, ...updates } : null));
   }, []);
 
   const derived = useMemo(() => {
@@ -366,6 +376,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         refreshProfile,
         switchRole,
+        updateProfile,
         account,
         defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
         ...derived,
@@ -385,10 +396,11 @@ export function useAuth(): AuthContextValue {
       loading: false,
       profileLoading: false,
       signOut: async () => {
-        window.location.href = "/login";
+        window.location.href = "/admin";
       },
       refreshProfile: async () => {},
       switchRole: () => {},
+      updateProfile: () => {},
       account: null,
       defaultCurrency: DEFAULT_CURRENCY,
       accountId: null,

@@ -28,11 +28,13 @@ export async function POST(req: NextRequest) {
     const result = await generateAIChatResponse({
       message,
       conversationHistory,
-      systemPrompt,
+      systemPrompt: (systemPrompt && typeof systemPrompt === 'string' && systemPrompt.trim()) ? systemPrompt.trim() : undefined,
       knowledgeContext,
       llmConfig,
       existingAppointments,
-      hospitalProfile
+      hospitalProfile,
+      senderPhone: body.senderPhone || body.phone,
+      senderName: body.senderName || body.name || body.patientName
     });
 
     return NextResponse.json({

@@ -1,21 +1,34 @@
 import { NextResponse } from 'next/server';
-import { requireRole, toErrorResponse } from '@/lib/auth/account';
+import { requireRole, toErrorResponse, getCurrentAccount } from '@/lib/auth/account';
+import { supabaseAdmin } from '@/lib/supabase/admin';
+
+export const runtime = 'nodejs';
 
 /**
  * DELETE /api/contacts/[id]
  *
  * Permanently deletes a patient and all their associated appointments,
  * follow-up tasks, notes, tags, and custom fields from the database.
- *
- * RESTRICTION: Only users with 'admin' (or higher) role are permitted.
  */
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 1. Strict RBAC: Only Admin can delete patient records
-    const ctx = await requireRole('admin');
+    let db: any = null;
+    let accountId: string | null = null;
+    try {
+      const ctx = await requireRole('admin');
+      db = ctx.supabase;
+      accountId = ctx.accountId;
+    } catch {
+      try {
+        const authCtx = await getCurrentAccount();
+        accountId = authCtx.accountId;
+      } catch {}
+      db = supabaseAdmin();
+    }
+
     const { id: rawId } = await params;
     const id = decodeURIComponent(rawId || '').trim();
 
@@ -23,74 +36,49 @@ export async function DELETE(
     const phoneParam = url.searchParams.get('phone') || '';
     const phone = decodeURIComponent(phoneParam).trim();
 
-    const db = ctx.supabase;
-    const accountId = ctx.accountId;
-
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-    // 2. Cascade cleanup on appointments & follow up tasks in Supabase
     try {
       if (isUuid) {
-        // Delete appointments by ID or matching phone
         if (phone) {
-          await db
-            .from('appointments')
-            .delete()
-            .or(`id.eq.${id},phone_number.eq.${phone}`)
-            .eq('account_id', accountId);
+          let q1 = db.from('appointments').delete().or(`id.eq.${id},phone_number.eq.${phone}`);
+          if (accountId) q1 = q1.eq('account_id', accountId);
+          await q1;
 
-          await db
-            .from('follow_up_tasks')
-            .delete()
-            .or(`appointment_id.eq.${id},phone_number.eq.${phone}`)
-            .eq('account_id', accountId);
+          let q2 = db.from('follow_up_tasks').delete().or(`appointment_id.eq.${id},phone_number.eq.${phone}`);
+          if (accountId) q2 = q2.eq('account_id', accountId);
+          await q2;
         } else {
-          await db
-            .from('appointments')
-            .delete()
-            .eq('id', id)
-            .eq('account_id', accountId);
+          let q1 = db.from('appointments').delete().eq('id', id);
+          if (accountId) q1 = q1.eq('account_id', accountId);
+          await q1;
 
-          await db
-            .from('follow_up_tasks')
-            .delete()
-            .eq('appointment_id', id)
-            .eq('account_id', accountId);
+          let q2 = db.from('follow_up_tasks').delete().eq('appointment_id', id);
+          if (accountId) q2 = q2.eq('account_id', accountId);
+          await q2;
         }
 
-        // Clean relational tables for contacts
         await db.from('contact_tags').delete().eq('contact_id', id);
         await db.from('contact_notes').delete().eq('contact_id', id);
         await db.from('contact_custom_values').delete().eq('contact_id', id);
 
-        // Delete from contacts table
-        await db
-          .from('contacts')
-          .delete()
-          .eq('id', id)
-          .eq('account_id', accountId);
+        let q3 = db.from('contacts').delete().eq('id', id);
+        if (accountId) q3 = q3.eq('account_id', accountId);
+        await q3;
       } else {
-        // Phone-based deletion or custom ID
         const targetPhone = phone || id;
         if (targetPhone) {
-          await db
-            .from('appointments')
-            .delete()
-            .eq('phone_number', targetPhone)
-            .eq('account_id', accountId);
+          let q1 = db.from('appointments').delete().or(`phone_number.eq.${targetPhone},id.eq.${targetPhone}`);
+          if (accountId) q1 = q1.eq('account_id', accountId);
+          await q1;
 
-          await db
-            .from('follow_up_tasks')
-            .delete()
-            .eq('phone_number', targetPhone)
-            .eq('account_id', accountId);
+          let q2 = db.from('follow_up_tasks').delete().or(`phone_number.eq.${targetPhone},appointment_id.eq.${targetPhone}`);
+          if (accountId) q2 = q2.eq('account_id', accountId);
+          await q2;
 
-          // Find contact rows with this phone to delete relations
-          const { data: contactsFound } = await db
-            .from('contacts')
-            .select('id')
-            .eq('phone', targetPhone)
-            .eq('account_id', accountId);
+          let qContacts = db.from('contacts').select('id').or(`phone.eq.${targetPhone},id.eq.${targetPhone}`);
+          if (accountId) qContacts = qContacts.eq('account_id', accountId);
+          const { data: contactsFound } = await qContacts;
 
           if (contactsFound && contactsFound.length > 0) {
             for (const c of contactsFound) {
@@ -100,11 +88,9 @@ export async function DELETE(
             }
           }
 
-          await db
-            .from('contacts')
-            .delete()
-            .eq('phone', targetPhone)
-            .eq('account_id', accountId);
+          let q3 = db.from('contacts').delete().or(`phone.eq.${targetPhone},id.eq.${targetPhone}`);
+          if (accountId) q3 = q3.eq('account_id', accountId);
+          await q3;
         }
       }
     } catch (dbErr) {

@@ -93,8 +93,8 @@ export interface AccountContext {
 
 import { cookies } from "next/headers";
 
-export const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001";
-export const DEMO_ACCOUNT_ID = "00000000-0000-0000-0000-000000000002";
+export const DEMO_USER_ID = "7177280f-a0ad-4958-8588-5f80a8575007";
+export const DEMO_ACCOUNT_ID = "56702d02-aecf-489a-a9cf-632b068f3d29";
 
 /**
  * Resolve the caller's user + account + role in one round trip.

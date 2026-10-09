@@ -35,14 +35,14 @@ export function UpcomingAppointments() {
             <div>
               <p className="text-xs font-semibold text-foreground">No Bookings Yet</p>
               <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                Open the AI Receptionist simulator to book appointments live over WhatsApp.
+                Appointments booked by patients over WhatsApp or added by staff will appear here.
               </p>
             </div>
             <Link 
-              href="/demo" 
+              href="/appointments" 
               className="mt-2 inline-flex items-center justify-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
             >
-              Try AI Receptionist
+              Manage Appointments
             </Link>
           </div>
         ) : (
@@ -57,11 +57,14 @@ export function UpcomingAppointments() {
                     {appt.patient_name.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-xs font-semibold text-foreground truncate">{appt.patient_name}</p>
+                      <span className="font-mono text-[9.5px] px-1.5 py-0.2 rounded bg-primary/10 text-primary font-bold border border-primary/20">
+                        {appt.booking_id || (appt.id.startsWith('LF-') ? appt.id : `LF-${(appt.date || '').replace(/\D/g, '') || '20261007'}-${appt.id.slice(-4)}`)}
+                      </span>
                       {appt.id.startsWith('appt-') && (
                         <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-1.5 py-0.2 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
-                          <Sparkles className="h-2 w-2" /> New
+                          <Sparkles className="h-2 w-2" /> AI
                         </span>
                       )}
                     </div>

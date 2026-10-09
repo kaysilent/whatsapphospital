@@ -54,52 +54,41 @@ function SignupPageInner() {
     setLoading(true);
 
     try {
-      const emailRedirectTo = inviteToken
-        ? `${window.location.origin}/join/${encodeURIComponent(inviteToken)}`
-        : undefined;
-
-      const { data: signupData, error: signupErr } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-          emailRedirectTo,
-        },
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: fullName.trim(),
+          email: email.trim(),
+          password,
+        }),
       });
 
-      if (signupErr) {
-        // Fallback for self-hosted standalone deployment
-        const doctorUser = {
-          id: "00000000-0000-0000-0000-000000000001",
-          email: email.trim(),
-          user_metadata: { full_name: fullName || "Doctor" },
-          role: "authenticated",
-        };
-        if (typeof window !== "undefined") {
-          localStorage.setItem("wacrm_demo_user", JSON.stringify(doctorUser));
-          document.cookie = "wacrm_demo_session=1; path=/; max-age=604800; SameSite=Lax";
-        }
-        window.location.href = inviteToken ? `/join/${encodeURIComponent(inviteToken)}` : "/dashboard";
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setError(data.error || "Failed to create clinic account. Please check your details.");
+        setLoading(false);
         return;
       }
 
-      setSuccess(true);
-      setLoading(false);
-    } catch (err: any) {
-      console.error("[Signup fallback]:", err);
-      const doctorUser = {
-        id: "00000000-0000-0000-0000-000000000001",
-        email: email.trim(),
-        user_metadata: { full_name: fullName || "Doctor" },
-        role: "authenticated",
-      };
       if (typeof window !== "undefined") {
-        localStorage.setItem("wacrm_demo_user", JSON.stringify(doctorUser));
+        const authUser = data.user || {
+          id: data.user?.id || "authenticated-user",
+          email: email.trim(),
+          user_metadata: { full_name: fullName.trim() },
+          role: "authenticated",
+        };
+        localStorage.setItem("wacrm_demo_user", JSON.stringify(authUser));
+        localStorage.setItem("wacrm_active_role", "super_admin");
         document.cookie = "wacrm_demo_session=1; path=/; max-age=604800; SameSite=Lax";
       }
-      window.location.href = "/dashboard";
+
+      window.location.href = inviteToken ? `/join/${encodeURIComponent(inviteToken)}` : "/dashboard";
+    } catch (err: any) {
+      console.error("[Signup Error]:", err);
+      setError(err.message || "Failed to create account. Please check your connection.");
+      setLoading(false);
     }
   };
 
@@ -123,8 +112,8 @@ function SignupPageInner() {
             <Link
               href={
                 inviteToken
-                  ? `/login?invite=${encodeURIComponent(inviteToken)}`
-                  : "/login"
+                  ? `/admin?invite=${encodeURIComponent(inviteToken)}`
+                  : "/admin"
               }
             >
               <Button
@@ -256,8 +245,8 @@ function SignupPageInner() {
             <Link
               href={
                 inviteToken
-                  ? `/login?invite=${encodeURIComponent(inviteToken)}`
-                  : "/login"
+                  ? `/admin?invite=${encodeURIComponent(inviteToken)}`
+                  : "/admin"
               }
               className="font-semibold text-primary hover:underline"
             >

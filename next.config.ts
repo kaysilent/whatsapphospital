@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import path from "path";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -29,11 +30,10 @@ const SECURITY_HEADERS = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     // Microphone is allowed for same-origin (`self`) so the inbox
-    // composer can record voice notes via MediaRecorder. Everything
-    // else stays denied — a compromised dependency can't silently grab
-    // the camera / geolocation / etc.
+    // composer can record voice notes via MediaRecorder. Payment is
+    // allowed for Razorpay checkout.
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=()",
+    value: "camera=(), microphone=(self), geolocation=(), payment=(self \"https://checkout.razorpay.com\"), usb=()",
   },
   {
     key: "Content-Security-Policy-Report-Only",
@@ -41,29 +41,35 @@ const SECURITY_HEADERS = [
       "default-src 'self'",
       // Next.js needs 'unsafe-inline' for its inline hydration script
       // and 'unsafe-eval' in dev + some production optimisations.
-      // Nonce-based CSP is a later project.
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      // Razorpay checkout SDK
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.razorpay.com",
       // Tailwind + inline style attributes on lots of components.
       "style-src 'self' 'unsafe-inline'",
-      // Supabase public-bucket avatars, contact avatars (arbitrary
-      // https URLs paste-able from the UI), OG images, data URLs for
-      // tiny inline assets.
+      // Supabase public-bucket avatars, contact avatars, Razorpay logos/badges
       "img-src 'self' data: blob: https:",
-      // Outbound media previews (blob: from MediaRecorder + file picker)
-      // and Supabase public-bucket audio/video the inbox renders.
+      // Outbound media previews and Supabase public-bucket audio/video
       "media-src 'self' blob: https://*.supabase.co",
-      "font-src 'self' data:",
-      // Supabase REST + realtime (WSS). All Meta API calls happen
-      // server-side, so graph.facebook.com does not belong here.
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      // Supabase REST + realtime (WSS), Razorpay APIs and telemetry
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.razorpay.com https://*.razorpay.com https://lumberjack.razorpay.com",
+      // Razorpay iframe embeds and 3D Secure / standard checkout
+      "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://*.razorpay.com https://*.razorpay.io",
       "frame-ancestors 'none'",
       "base-uri 'self'",
-      "form-action 'self'",
+      "form-action 'self' https://api.razorpay.com",
     ].join("; "),
   },
 ] as const;
 
 const nextConfig: NextConfig = {
+  webpack: (config) => {
+    config.resolve = config.resolve || {};
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@": path.resolve(process.cwd(), "src"),
+    };
+    return config;
+  },
 
   /**
    * Cross-origin dev access (Next.js 16).

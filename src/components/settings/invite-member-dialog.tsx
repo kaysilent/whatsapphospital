@@ -184,55 +184,51 @@ export function InviteMemberDialog({
         {result ? (
           <>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-popover-foreground">
+              <DialogTitle className="flex items-center gap-2 text-base font-bold text-foreground">
                 <Sparkles className="size-4 text-primary" />
                 {t('inviteCreated')}
               </DialogTitle>
-              <DialogDescription className="text-muted-foreground">
+              <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
                 {t.rich('inviteCreatedDesc', {
                   role: tRoles(result.role),
                   days: result.expiresInDays,
-                  bold: (chunks: React.ReactNode) => <strong>{chunks}</strong>
+                  bold: (chunks: React.ReactNode) => <strong className="text-foreground font-semibold">{chunks}</strong>
                 })}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3 py-2">
-              <Label className="text-muted-foreground">{t('inviteLink')}</Label>
-              <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={result.url}
-                  className="bg-muted border-border text-foreground font-mono text-xs"
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-                <Button
-                  type="button"
-                  onClick={copyToClipboard}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
-                >
-                  <Copy className="size-4" />
-                  {t('copy')}
-                </Button>
+            <div className="space-y-3.5 py-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-foreground">{t('inviteLink')}</Label>
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={result.url}
+                    className="bg-muted/80 border-border text-foreground font-mono text-xs select-all focus:ring-1 focus:ring-primary font-medium"
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <Button
+                    type="button"
+                    onClick={copyToClipboard}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shrink-0 gap-1.5 shadow-xs"
+                  >
+                    <Copy className="size-4" />
+                    {t('copy')}
+                  </Button>
+                </div>
               </div>
 
-              {/* Higher-contrast amber than the original 10% / amber-200.
-                  Reviewed against slate-900 to meet WCAG AAA for body
-                  text (target ratio 7:1). Border bumped to /50, bg to
-                  /15, foreground promoted to amber-100 for the strong
-                  intro, amber-200 for the body. */}
-              <div className="rounded-md border border-amber-500/50 bg-amber-500/15 px-3 py-2 text-xs text-amber-200">
-                <strong className="font-semibold text-amber-100">
-                  {t('saveLinkNow')}
-                </strong>{' '}
-                {t('saveLinkHint')}
+              {/* High contrast alert banner for light & dark mode */}
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3.5 text-xs text-amber-950 dark:text-amber-100 shadow-2xs leading-relaxed space-y-1">
+                <div className="font-bold text-amber-950 dark:text-amber-100 flex items-center gap-1.5">
+                  <span>⚠️</span>
+                  <span>{t('saveLinkNow')}</span>
+                </div>
+                <p className="text-amber-900/90 dark:text-amber-200/90 text-[11.5px]">
+                  {t('saveLinkHint')}
+                </p>
               </div>
 
-              {/* Anchor styled with `buttonVariants` rather than wrapping
-                  in <Button asChild>. The wacrm Button is the Base UI
-                  ButtonPrimitive — it has no Radix-style asChild slot.
-                  Direct anchor preserves right-click "Open in new tab"
-                  behaviour too. */}
               <a
                 href={whatsappShareUrl(result.url)}
                 target="_blank"
@@ -240,18 +236,18 @@ export function InviteMemberDialog({
                 className={buttonVariants({
                   variant: 'outline',
                   className:
-                    'w-full border-border text-muted-foreground hover:bg-muted',
+                    'w-full border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 font-semibold gap-2 transition-colors',
                 })}
               >
-                <MessageCircle className="size-4" />
+                <MessageCircle className="size-4 text-emerald-600 dark:text-emerald-400" />
                 {t('sendViaWhatsApp')}
               </a>
             </div>
 
-            <DialogFooter className="bg-popover border-border">
+            <DialogFooter className="bg-popover border-border pt-2">
               <Button
                 onClick={() => onOpenChange(false)}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-6"
               >
                 {t('done')}
               </Button>

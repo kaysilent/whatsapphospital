@@ -126,7 +126,7 @@ function fmtExpiresIn(iso: string, t: (key: string, values?: Record<string, stri
 export function MembersTab() {
   const t = useTranslations('Settings.members');
   const tRoles = useTranslations('Settings.roles');
-  const { user, canManageMembers, canManageRoles } = useAuth();
+  const { user, canManageMembers, canManageRoles, switchRole } = useAuth();
   const { getPresence, getRow, now } = usePresence();
 
   const [members, setMembers] = useState<Member[]>([]);
@@ -191,6 +191,9 @@ export function MembersTab() {
         m.user_id === member.user_id ? { ...m, role: nextRole } : m,
       ),
     );
+    if (member.user_id === user?.id) {
+      switchRole(nextRole);
+    }
     try {
       const res = await fetch(`/api/account/members/${member.user_id}`, {
         method: 'PATCH',
@@ -409,8 +412,8 @@ export function MembersTab() {
                       inline. Items align to the start on mobile so the
                       role dropdown lines up under the avatar. */}
                   <div className="flex items-center gap-2 sm:gap-3">
-                    {/* Role display / editor. Inline Select is super_admin only AND not allowed on the owner row */}
-                    {canManageRoles && !isOwnerRow && !isSelf ? (
+                    {/* Role display / editor. Inline Select is super_admin/admin only AND not allowed on the owner row */}
+                    {canManageRoles && !isOwnerRow ? (
                       <Select
                         value={member.role}
                         onValueChange={(v) =>
@@ -418,22 +421,34 @@ export function MembersTab() {
                         }
                       >
                         <SelectTrigger
-                          className="w-32 bg-muted border-border text-foreground"
+                          className="w-32 bg-muted/60 border-border text-foreground font-semibold text-xs rounded-xl hover:bg-muted transition-colors shadow-2xs"
                           disabled={isBusy}
                         >
-                          <SelectValue>{tRoles(member.role)}</SelectValue>
+                          <SelectValue placeholder={tRoles(member.role)}>
+                            <span className="flex items-center gap-1.5 truncate">
+                              <RoleIcon className="size-3.5 shrink-0 text-primary" />
+                              <span>{tRoles(member.role)}</span>
+                            </span>
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {EDITABLE_ROLES.map((r) => (
-                            <SelectItem key={r.value} value={r.value}>
-                              {tRoles(r.value)}
-                            </SelectItem>
-                          ))}
+                          {EDITABLE_ROLES.map((r) => {
+                            const meta = ROLE_META[r.value];
+                            const ItemIcon = meta.icon;
+                            return (
+                              <SelectItem key={r.value} value={r.value} className="text-xs font-medium cursor-pointer">
+                                <span className="flex items-center gap-2">
+                                  <ItemIcon className="size-3.5 text-primary" />
+                                  <span>{tRoles(r.value)}</span>
+                                </span>
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                     ) : (
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${roleMeta.className}`}
+                        className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-semibold ${roleMeta.className}`}
                       >
                         <RoleIcon className="size-3.5" />
                         {tRoles(member.role)}

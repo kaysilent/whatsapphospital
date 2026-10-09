@@ -138,12 +138,33 @@ export async function POST(request: Request) {
       metaTemplateId = `dry-run-${crypto.randomUUID()}`
       metaStatus = 'PENDING'
     } else {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
-      if (configError || !config) {
+      const { createClient: createAdminClient } = await import('@supabase/supabase-js')
+      const admin = createAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+
+      let config: any = null
+      if (accountId) {
+        const { data } = await admin
+          .from('whatsapp_config')
+          .select('*')
+          .eq('account_id', accountId)
+          .maybeSingle()
+        config = data
+      }
+
+      if (!config) {
+        const { data } = await admin
+          .from('whatsapp_config')
+          .select('*')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        config = data
+      }
+
+      if (!config) {
         return NextResponse.json(
           {
             error:

@@ -32,7 +32,9 @@ import {
   Stethoscope,
   CalendarCheck,
   MapPin,
-  CalendarClock
+  CalendarClock,
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,6 +48,7 @@ export default function FollowUpsPage() {
   const { 
     followUps, 
     completeFollowUpTask, 
+    deleteFollowUpTask,
     sendFollowUpWhatsApp, 
     addFollowUpTask,
     updateFollowUpSittings
@@ -94,7 +97,7 @@ export default function FollowUpsPage() {
   });
 
   const getStageMessage = (task: FollowUpTask, stage: FollowUpStage): string => {
-    const mapsLink = "https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Bangalore";
+    const mapsLink = "https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Hyderabad";
     const sittings = task.total_sittings || 4;
     const interval = task.interval_gap || '1 month';
 
@@ -109,24 +112,57 @@ export default function FollowUpsPage() {
         return `Hello ${task.patient_name}, this is a quick follow-up from La Fleur Clinic. Your scheduled sitting for ${task.department} is due in 2 days. Reply to this message if you would like us to hold a consultation slot for you.`;
 
       case 'previous_day_5pm':
-        return `Appointment Reminder (5:00 PM Update):\n\nDear ${task.patient_name}, your consultation with Dr. Mrinalini is scheduled for tomorrow at ${task.due || '11:30 AM'} for ${task.department}.\n\n• Pre-Care Guidance: Avoid active exfoliants, keep area clean, and stay hydrated.\n• Clinic Google Maps Location:\n${mapsLink}\nSuite 402, Green Glen Towers, Bangalore.\n\nPlease reply CONFIRM to acknowledge.`;
+        return `Appointment Reminder (5:00 PM Update):\n\nDear ${task.patient_name}, your consultation with Dr. Mrinalini is scheduled for tomorrow at ${task.due || '11:30 AM'} for ${task.department}.\n\n• Pre-Care Guidance: Avoid active exfoliants, keep area clean, and stay hydrated.\n• Clinic Google Maps Location:\n${mapsLink}\nRoad No.11 B, Jubilee hills, Hyderabad - 500045.\n\nPlease reply CONFIRM to acknowledge.`;
 
       default:
         return task.whatsapp_message_content || `Dear ${task.patient_name}, Dr. Mrinalini is checking in regarding your ${task.department} follow-up.`;
     }
   };
 
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+
   const handleOpenSendWhatsApp = (task: FollowUpTask, stage: FollowUpStage = 'day_0_protocol') => {
     setSendWhatsAppModal(task);
     setCustomWhatsAppMsg(getStageMessage(task, stage));
   };
 
-  const handleConfirmSendWhatsApp = (e: React.FormEvent) => {
+  const handleConfirmSendWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sendWhatsAppModal) return;
-    sendFollowUpWhatsApp(sendWhatsAppModal.id, customWhatsAppMsg);
-    toast.success(`WhatsApp follow-up sent to ${sendWhatsAppModal.patient_name} (${sendWhatsAppModal.phone_number})!`);
-    setSendWhatsAppModal(null);
+    setSendingWhatsApp(true);
+    try {
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: sendWhatsAppModal.phone_number,
+          name: sendWhatsAppModal.patient_name,
+          message_type: 'text',
+          content_text: customWhatsAppMsg,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.code === 'whatsapp_not_configured' || data.error?.includes('not configured')) {
+          toast.info(`WhatsApp reminder queued for ${sendWhatsAppModal.patient_name}. (Connect Meta API in Settings for live WhatsApp delivery)`);
+          sendFollowUpWhatsApp(sendWhatsAppModal.id, customWhatsAppMsg);
+          setSendWhatsAppModal(null);
+        } else {
+          toast.error(data.error || 'Failed to dispatch WhatsApp follow-up');
+        }
+      } else {
+        toast.success(`WhatsApp follow-up sent to ${sendWhatsAppModal.patient_name} (${sendWhatsAppModal.phone_number})!`);
+        sendFollowUpWhatsApp(sendWhatsAppModal.id, customWhatsAppMsg);
+        setSendWhatsAppModal(null);
+      }
+    } catch (err) {
+      console.error('Follow-up WhatsApp error:', err);
+      toast.success(`Follow-up reminder recorded for ${sendWhatsAppModal.patient_name}!`);
+      sendFollowUpWhatsApp(sendWhatsAppModal.id, customWhatsAppMsg);
+      setSendWhatsAppModal(null);
+    } finally {
+      setSendingWhatsApp(false);
+    }
   };
 
   const handleOpenEditSittings = (task: FollowUpTask) => {
@@ -161,14 +197,41 @@ export default function FollowUpsPage() {
     setEditSittingsModal(null);
   };
 
-  const handleAutoTriggerAll = () => {
+  const handleDeleteFollowUp = (id: string, name: string) => {
+    deleteFollowUpTask(id);
+    toast.success(`Deleted follow-up schedule for ${name}`);
+  };
+
+  const handleAutoTriggerAll = async () => {
     const pending = followUps.filter(f => f.status === 'Pending');
     if (pending.length === 0) {
       toast.info("All WhatsApp follow-ups and interval reminders are already sent!");
       return;
     }
-    pending.forEach(p => sendFollowUpWhatsApp(p.id));
-    toast.success(`Triggered ${pending.length} WhatsApp follow-ups & next-sitting reminders via AI Agent!`);
+    toast.info(`Dispatching ${pending.length} WhatsApp reminders via Meta API...`);
+    let sentCount = 0;
+    for (const p of pending) {
+      const msg = p.whatsapp_message_content || getStageMessage(p, 'day_0_protocol');
+      try {
+        const res = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: p.phone_number,
+            name: p.patient_name,
+            message_type: 'text',
+            content_text: msg,
+          }),
+        });
+        if (res.ok) {
+          sentCount++;
+          sendFollowUpWhatsApp(p.id, msg);
+        }
+      } catch (err) {
+        console.error('Auto trigger error for', p.patient_name, err);
+      }
+    }
+    toast.success(`Dispatched ${sentCount} of ${pending.length} WhatsApp reminders via Meta API!`);
   };
 
   const handleCreateCustomFollowUp = (e: React.FormEvent) => {
@@ -384,7 +447,7 @@ export default function FollowUpsPage() {
               <TableHead className="w-[240px] text-xs font-semibold text-muted-foreground px-4 py-3">Automated Reminders</TableHead>
               <TableHead className="w-[130px] text-xs font-semibold text-muted-foreground px-4 py-3">Due Target</TableHead>
               <TableHead className="w-[110px] text-xs font-semibold text-muted-foreground px-4 py-3">Status</TableHead>
-              <TableHead className="w-[260px] text-xs font-semibold text-muted-foreground text-right px-4 py-3">Trigger Stage</TableHead>
+              <TableHead className="w-[300px] text-xs font-semibold text-muted-foreground text-right px-4 py-3">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -507,12 +570,27 @@ export default function FollowUpsPage() {
                         <Button 
                           size="sm" 
                           variant={isCompleted ? "ghost" : "outline"}
-                          className={`h-7 text-[11px] ${isCompleted ? 'text-muted-foreground' : 'text-foreground hover:border-primary shadow-2xs'}`}
-                          onClick={() => completeFollowUpTask(task.id)}
+                          className={`h-7 text-[11px] gap-1 ${isCompleted ? 'text-muted-foreground' : 'text-foreground hover:border-primary shadow-2xs'}`}
+                          onClick={() => {
+                            completeFollowUpTask(task.id);
+                            toast.success(`Marked follow-up for ${task.patient_name} as Done`);
+                          }}
                           title="Mark task completed"
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                           <span>Done</span>
+                        </Button>
+
+                        {/* Delete Follow-Up Schedule */}
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          className="h-7 px-2 text-[11px] gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md border border-rose-200/80 dark:border-rose-900/40 hover:border-rose-300 transition-colors font-medium"
+                          onClick={() => handleDeleteFollowUp(task.id, task.patient_name)}
+                          title="Delete this follow-up schedule permanently"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                          <span>Delete</span>
                         </Button>
                       </div>
                     </TableCell>
@@ -734,12 +812,21 @@ export default function FollowUpsPage() {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
-                <Button type="button" variant="outline" size="sm" onClick={() => setSendWhatsAppModal(null)}>
+                <Button type="button" variant="outline" size="sm" onClick={() => setSendWhatsAppModal(null)} disabled={sendingWhatsApp}>
                   Cancel
                 </Button>
-                <Button type="submit" size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5">
-                  <Send className="h-3.5 w-3.5" />
-                  <span>Send via WhatsApp AI</span>
+                <Button type="submit" size="sm" disabled={sendingWhatsApp} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5">
+                  {sendingWhatsApp ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Sending via Meta API...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-3.5 w-3.5" />
+                      <span>Send via WhatsApp AI</span>
+                    </>
+                  )}
                 </Button>
               </div>
             </form>

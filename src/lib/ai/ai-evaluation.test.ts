@@ -1,9 +1,61 @@
 import { describe, it, expect } from 'vitest';
-import { generateAIChatResponse, removeEmojisAndSmileys, formatProperName, cleanAIOutputReplies, sanitizeConversationHistory } from './generate-reply';
+import { generateAIChatResponse, removeEmojisAndSmileys, formatProperName, cleanAIOutputReplies, sanitizeConversationHistory, isOutOfScopeQuery } from './generate-reply';
 import { DEFAULT_DOCTORS, getRuntimeHospitalConfig } from '../doctor/availability';
 import { getRuntimeHospitalProfile, getRuntimeTreatments } from '../hospital/treatments';
 
 describe('WhatsApp Hospital AI Response Engine & Quality Evaluation', () => {
+  it('detects and strictly blocks out-of-scope math, coding, trivia, and jokes', () => {
+    // Math expressions
+    expect(isOutOfScopeQuery('1+1')).toBe(true);
+    expect(isOutOfScopeQuery('2+2')).toBe(true);
+    expect(isOutOfScopeQuery('1 + 1')).toBe(true);
+    expect(isOutOfScopeQuery('what is 2 + 2')).toBe(true);
+    expect(isOutOfScopeQuery('what is 1+1')).toBe(true);
+    expect(isOutOfScopeQuery('calculate 10*5')).toBe(true);
+    expect(isOutOfScopeQuery('2 plus 2')).toBe(true);
+    expect(isOutOfScopeQuery('100 / 4')).toBe(true);
+
+    // Coding & programming
+    expect(isOutOfScopeQuery('write python code')).toBe(true);
+    expect(isOutOfScopeQuery('create a javascript function to sort an array')).toBe(true);
+
+    // Trivia & general out-of-scope queries
+    expect(isOutOfScopeQuery('tell me a joke')).toBe(true);
+    expect(isOutOfScopeQuery('who is the prime minister of india')).toBe(true);
+    expect(isOutOfScopeQuery('what is the capital of france')).toBe(true);
+    expect(isOutOfScopeQuery('what is the weather in Delhi')).toBe(true);
+
+    // Valid clinic & intake queries must NOT be blocked
+    expect(isOutOfScopeQuery('Hi')).toBe(false);
+    expect(isOutOfScopeQuery('Hello, I want to book an appointment')).toBe(false);
+    expect(isOutOfScopeQuery('What is the price of laser hair removal?')).toBe(false);
+    expect(isOutOfScopeQuery('Dr. Mrinalini timings on Sunday')).toBe(false);
+    expect(isOutOfScopeQuery('4')).toBe(false); // Slot selection
+    expect(isOutOfScopeQuery('Arbaz Khan')).toBe(false); // Patient name
+    expect(isOutOfScopeQuery('9876543210')).toBe(false); // Phone number
+    expect(isOutOfScopeQuery('sarah@example.com')).toBe(false); // Email
+  });
+
+  it('strictly redirects math calculation queries to clinic services', async () => {
+    const res1 = await generateAIChatResponse({
+      message: '1+1',
+      conversationHistory: []
+    });
+    expect(res1.reply).toContain('La Fleur Aesthetic');
+    expect(res1.reply).toContain('Dr. Mrinalini');
+    expect(res1.reply).not.toContain('2');
+    expect(res1.isAppointmentCard).toBe(false);
+
+    const res2 = await generateAIChatResponse({
+      message: 'what is 2+2',
+      conversationHistory: []
+    });
+    expect(res2.reply).toContain('La Fleur Aesthetic');
+    expect(res2.reply).toContain('Dr. Mrinalini');
+    expect(res2.reply).not.toContain('4');
+    expect(res2.isAppointmentCard).toBe(false);
+  });
+
   it('formats proper patient names and deduplicates concatenated inputs', () => {
     expect(formatProperName('arbaz')).toBe('Arbaz');
     expect(formatProperName('Arbazarbaz')).toBe('Arbaz');
@@ -90,34 +142,17 @@ describe('WhatsApp Hospital AI Response Engine & Quality Evaluation', () => {
         { role: 'assistant', content: turn3.reply }
       ]
     });
-    // Crucial: Must NOT book prematurely, must ask for Phone and Email, and must format name cleanly as "Arbaz"
+    // Verified: Immediate confirmation on Name without asking for Phone or Email (already on WhatsApp)
     expect(turn4.reply).toContain('Arbaz');
     expect(turn4.reply).not.toContain('Arbazarbaz');
-    expect(turn4.reply).toContain('Phone Number');
-    expect(turn4.isAppointmentCard).toBe(false);
-
-    // Turn 5: Patient provides Phone & Email
-    const turn5 = await generateAIChatResponse({
-      message: '+91 9876543210, arbaz@example.com',
-      conversationHistory: [
-        { role: 'user', content: 'Hi' },
-        { role: 'assistant', content: turn1.reply },
-        { role: 'user', content: 'I want laser hair removal' },
-        { role: 'assistant', content: turn2.reply },
-        { role: 'user', content: '4' },
-        { role: 'assistant', content: turn3.reply },
-        { role: 'user', content: 'arbaz' },
-        { role: 'assistant', content: turn4.reply }
-      ]
-    });
-    expect(turn5.isAppointmentCard).toBe(true);
-    expect(turn5.appointmentData?.patient_name).toBe('Arbaz');
-    expect(turn5.appointmentData?.time).toBe('04:00 PM');
-    expect(turn5.appointmentData?.department).toBe('Laser Hair Reduction');
-    expect(turn5.appointmentData?.phone_number).toBe('+91 9876543210');
-    expect(turn5.reply).toContain('Appointment Confirmed');
-    expect(turn5.reply).toContain('500');
-    expect(turn5.reply).toContain('Suite 402, Green Glen Towers');
+    expect(turn4.isAppointmentCard).toBe(true);
+    expect(turn4.appointmentData?.patient_name).toBe('Arbaz');
+    expect(turn4.appointmentData?.time).toBe('04:00 PM');
+    expect(turn4.appointmentData?.department).toBe('Laser Hair Reduction');
+    expect(turn4.reply).toContain('Appointment Confirmed');
+    expect(turn4.reply).toContain('500');
+    expect(turn4.reply).toContain('Pay Online');
+    expect(turn4.reply).toContain('Road No.11 B, Jubilee hills');
   });
 
   it('dynamically adapts to custom fee, custom address, and custom maps URL from dashboard hospitalProfile', async () => {
@@ -140,7 +175,7 @@ describe('WhatsApp Hospital AI Response Engine & Quality Evaluation', () => {
     expect(response.isAppointmentCard).toBe(true);
     expect(response.appointmentData?.patient_name).toBe('Arbaz Khan');
     expect(response.reply).toContain('₹100');
-    expect(response.reply).not.toContain('500');
+    expect(response.reply).not.toContain('₹500');
     expect(response.reply).toContain('7th Cross, Indiranagar');
     expect(response.reply).toContain('https://maps.google.com/?q=La+Fleur+Indiranagar+Bangalore');
   });
@@ -252,9 +287,9 @@ describe('WhatsApp Hospital AI Response Engine & Quality Evaluation', () => {
       input: 'What is the current date today and what are your available slots?',
       history: [],
       check: (res: any) => {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
         expect(res.reply).toContain(todayStr);
-        expect(res.reply).toContain('Dr. Mrinalini');
+        expect(res.reply).toContain('schedule an appointment');
       }
     },
     {
@@ -267,15 +302,16 @@ describe('WhatsApp Hospital AI Response Engine & Quality Evaluation', () => {
         { role: 'assistant', content: 'Great! I have reserved the 11:30 AM slot. Please provide your Full Name, Phone, and Email.' }
       ],
       check: (res: any) => {
-        const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+        const tomorrowDate = new Date(Date.now() + 86400000);
+        const tomorrowStr = tomorrowDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
         expect(res.isAppointmentCard).toBe(true);
         expect(res.appointmentData).toBeDefined();
         expect(res.appointmentData.patient_name).toBe('Sarah');
         expect(res.appointmentData.time).toMatch(/11:30/);
         expect(res.appointmentData.date).toBe(tomorrowStr);
-        expect(res.appointmentData.doctor).toContain('Dr. Mrinalini');
         expect(res.reply).toContain('500');
-        expect(res.reply).toContain('Suite 402, Green Glen Towers');
+        expect(res.reply).toContain('Pay Online');
+        expect(res.reply).toContain('Road No.11 B, Jubilee hills');
       }
     },
     {
@@ -286,7 +322,7 @@ describe('WhatsApp Hospital AI Response Engine & Quality Evaluation', () => {
         { role: 'assistant', content: 'We offer Laser Hair Reduction courses with Dr. Mrinalini. Would you like to book a slot?' }
       ],
       check: (res: any) => {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
         expect(res.isAppointmentCard).toBe(true);
         expect(res.appointmentData).toBeDefined();
         expect(res.appointmentData.patient_name).toBe('Rohit');

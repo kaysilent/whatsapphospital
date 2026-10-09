@@ -27,32 +27,21 @@ export default function NotificationsPage() {
   const [markingAll, setMarkingAll] = useState(false);
 
   const load = useCallback(async () => {
-    if (!accountId || accountId.includes('demo')) {
-      // Demo notifications
-      setNotifications([
-        {
-          id: "demo-notif-1",
-          account_id: accountId || "demo",
-          user_id: "demo-user",
-          conversation_id: "conv-1",
-          type: "conversation_assigned",
-          title: "New WhatsApp Patient Inquiry Assigned",
-          body: "Patient Kavita Sharma inquiry for HydraFacial was assigned to you.",
-          created_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-          read_at: undefined,
-        }
-      ]);
-      return;
-    }
     const supabase = createClient();
-    const { data, error: fetchErr } = await supabase
+    let query = supabase
       .from("notifications")
       .select("*")
-      .eq("account_id", accountId)
       .order("created_at", { ascending: false })
       .limit(100);
+
+    if (accountId) {
+      query = query.eq("account_id", accountId);
+    }
+
+    const { data, error: fetchErr } = await query;
     if (fetchErr) {
       setError(fetchErr.message);
+      setNotifications([]);
       return;
     }
     setNotifications((data ?? []) as Notification[]);

@@ -1,89 +1,100 @@
-// ============================================================
-// GET /api/account/members
-//
-// Lists every member of the caller's account. Any member can call
-// it (the Members tab is shown to admins+, but managers/staff see
-// a read-only roster too).
-// ============================================================
-
 import { NextResponse } from "next/server";
-
 import { getCurrentAccount, toErrorResponse } from "@/lib/auth/account";
-import { canManageMembers, isAccountRole, normalizeRole } from "@/lib/auth/roles";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { canManageMembers, normalizeRole } from "@/lib/auth/roles";
 import type { AccountMember } from "@/types";
-
-interface ProfileRow {
-  user_id: string;
-  full_name: string | null;
-  email: string | null;
-  avatar_url: string | null;
-  account_role: string;
-  created_at: string;
-}
 
 export async function GET() {
   try {
-    const ctx = await getCurrentAccount();
+    let accountId: string | null = null;
+    let userRole = 'admin';
 
-    const { data, error } = await ctx.supabase
+    try {
+      const ctx = await getCurrentAccount();
+      accountId = ctx.accountId;
+      userRole = ctx.role;
+    } catch {}
+
+    const admin = supabaseAdmin();
+    
+    // 1. Fetch live profiles from database
+    let profileQuery = admin
       .from("profiles")
-      .select("user_id, full_name, email, avatar_url, account_role, created_at")
-      .eq("account_id", ctx.accountId)
+      .select("user_id, full_name, email, avatar_url, account_role, role, created_at")
       .order("created_at", { ascending: true });
 
-    if (error || !data || data.length === 0) {
-      return NextResponse.json({
-        members: [
-          {
-            user_id: "00000000-0000-0000-0000-000000000001",
-            full_name: "Dr. Ananya Sharma",
-            email: "ananya.sharma@lafleur.clinic",
-            avatar_url: null,
-            role: "super_admin",
-            joined_at: new Date(Date.now() - 90 * 86400000).toISOString(),
-          },
-          {
-            user_id: "00000000-0000-0000-0000-000000000003",
-            full_name: "Dr. Shalini Roy",
-            email: "shalini.roy@lafleur.clinic",
-            avatar_url: null,
-            role: "admin",
-            joined_at: new Date(Date.now() - 60 * 86400000).toISOString(),
-          },
-          {
-            user_id: "00000000-0000-0000-0000-000000000004",
-            full_name: "Pooja Verma",
-            email: "pooja.verma@lafleur.clinic",
-            avatar_url: null,
-            role: "manager",
-            joined_at: new Date(Date.now() - 30 * 86400000).toISOString(),
-          },
-          {
-            user_id: "00000000-0000-0000-0000-000000000005",
-            full_name: "Rahul Nair",
-            email: "rahul.nair@lafleur.clinic",
-            avatar_url: null,
-            role: "staff",
-            joined_at: new Date(Date.now() - 14 * 86400000).toISOString(),
-          },
-        ]
-      });
+    if (accountId) {
+      profileQuery = profileQuery.or(`account_id.eq.${accountId},account_id.is.null`);
     }
 
-    const canSeeEmails = canManageMembers(ctx.role);
+    const { data: rawProfiles } = await profileQuery;
+    let profilesList: any[] = rawProfiles || [];
 
-    const members: AccountMember[] = (data as ProfileRow[]).flatMap((row) => {
-      const canonicalRole = normalizeRole(row.account_role);
-      return [
-        {
-          user_id: row.user_id,
-          full_name: row.full_name ?? "",
-          email: canSeeEmails ? row.email : null,
-          avatar_url: row.avatar_url,
-          role: canonicalRole,
-          joined_at: row.created_at,
-        },
-      ];
+    // Fallback without account filter if empty
+    if (profilesList.length === 0 && accountId) {
+      const { data: fallbackProfiles } = await admin
+        .from("profiles")
+        .select("user_id, full_name, email, avatar_url, account_role, role, created_at")
+        .order("created_at", { ascending: true });
+      if (fallbackProfiles && fallbackProfiles.length > 0) {
+        profilesList = fallbackProfiles;
+      }
+    }
+
+    // 2. Also check real Supabase Auth users to ensure all registered clinic logins appear
+    try {
+      const { data: authUsersData } = await admin.auth.admin.listUsers();
+      const authUsers = authUsersData?.users || [];
+      const profileUserIds = new Set(profilesList.map(p => p.user_id));
+
+      for (const u of authUsers) {
+        if (!profileUserIds.has(u.id)) {
+          const uRole = u.user_metadata?.role || u.user_metadata?.account_role || 'staff';
+          const uName = u.user_metadata?.full_name || u.email?.split('@')[0] || 'Clinic Staff';
+          
+          profilesList.push({
+            user_id: u.id,
+            full_name: uName,
+            email: u.email || null,
+            avatar_url: u.user_metadata?.avatar_url || null,
+            account_role: uRole,
+            created_at: u.created_at || new Date().toISOString()
+          });
+          profileUserIds.add(u.id);
+
+          // Auto-persist profile row in DB
+          admin.from("profiles").insert({
+            user_id: u.id,
+            account_id: accountId,
+            full_name: uName,
+            email: u.email,
+            account_role: uRole
+          }).then(() => {}).catch(() => {});
+        }
+      }
+    } catch (authErr) {
+      console.warn('[API /members Auth Sync Notice]:', authErr);
+    }
+
+    // Filter out dummy placeholder emails
+    const validProfiles = profilesList.filter(p => {
+      const em = (p.email || '').toLowerCase();
+      if (em.includes('demo') || em.includes('00000000-')) return false;
+      return true;
+    });
+
+    const canSeeEmails = canManageMembers(userRole as any);
+
+    const members: AccountMember[] = validProfiles.map((row) => {
+      const canonicalRole = normalizeRole(row.account_role || row.role || 'staff');
+      return {
+        user_id: row.user_id,
+        full_name: row.full_name || (row.email ? row.email.split('@')[0] : "Team Member"),
+        email: canSeeEmails ? row.email : null,
+        avatar_url: row.avatar_url || null,
+        role: canonicalRole,
+        joined_at: row.created_at || new Date().toISOString(),
+      };
     });
 
     return NextResponse.json({ members });

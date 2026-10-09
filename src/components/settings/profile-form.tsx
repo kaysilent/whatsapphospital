@@ -6,9 +6,17 @@ import { Loader2, Upload, Trash2, Mail, CircleAlert } from 'lucide-react';
 
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
+import type { AccountRole } from '@/lib/auth/roles';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Avatar,
   AvatarFallback,
@@ -33,11 +41,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function ProfileForm() {
   const t = useTranslations('Settings.profile');
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, switchRole, updateProfile } = useAuth();
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [fullName, setFullName] = useState('');
+  const [role, setRole] = useState('');
+  const [accountRole, setAccountRole] = useState<AccountRole>('admin');
   const [email, setEmail] = useState('');
   const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -49,7 +59,12 @@ export function ProfileForm() {
   useEffect(() => {
     if (!profile) return;
     setFullName(profile.full_name ?? '');
+    const currentCustomRole = typeof window !== 'undefined' ? localStorage.getItem('wacrm_profile_role') : null;
+    setRole(profile.role || currentCustomRole || 'Chief Dermatologist & Aesthetic Physician');
     setEmail(profile.email ?? '');
+    if (profile.account_role) {
+      setAccountRole(profile.account_role);
+    }
   }, [profile]);
 
   // Cleanup object URLs to avoid leaks.
@@ -106,6 +121,7 @@ export function ProfileForm() {
       toast.error(t('nameRequired'));
       return;
     }
+    const trimmedRole = role.trim() || 'Chief Dermatologist & Aesthetic Physician';
     const trimmedEmail = email.trim();
     if (!EMAIL_RE.test(trimmedEmail)) {
       toast.error(t('invalidEmail'));
@@ -139,17 +155,48 @@ export function ProfileForm() {
         nextAvatarUrl = null;
       }
 
-      // Persist name + avatar to profiles.
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          full_name: trimmedName,
-          avatar_url: nextAvatarUrl,
-        })
-        .eq('user_id', user.id);
-      if (updateError) {
-        throw new Error(t('saveFailed', { message: updateError.message }));
+      // Persist name + role + avatar to profiles.
+      try {
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
+            full_name: trimmedName,
+            role: trimmedRole,
+            avatar_url: nextAvatarUrl,
+          })
+          .eq('user_id', user.id);
+        if (updateError) {
+          console.warn('[ProfileForm] profiles update warning:', updateError.message);
+        }
+      } catch (dbErr: any) {
+        console.warn('[ProfileForm] profiles update threw:', dbErr?.message);
       }
+
+      // Update role and permission level in localStorage and demo session
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('wacrm_profile_role', trimmedRole);
+        localStorage.setItem('wacrm_active_role', accountRole);
+        try {
+          const rawDemo = localStorage.getItem('wacrm_demo_user');
+          if (rawDemo) {
+            const parsed = JSON.parse(rawDemo);
+            parsed.role = trimmedRole;
+            parsed.role_title = trimmedRole;
+            localStorage.setItem('wacrm_demo_user', JSON.stringify(parsed));
+          }
+        } catch {}
+      }
+
+      if (accountRole && accountRole !== profile.account_role) {
+        switchRole(accountRole);
+      }
+
+      updateProfile({
+        full_name: trimmedName,
+        role: trimmedRole,
+        account_role: accountRole,
+        avatar_url: nextAvatarUrl,
+      });
 
       // Email change goes through Supabase Auth, which emails a
       // confirmation to both the old and new addresses. We don't
@@ -191,9 +238,14 @@ export function ProfileForm() {
     }
   };
 
+  const currentBaseRole = profile?.role || (typeof window !== 'undefined' ? localStorage.getItem('wacrm_profile_role') : null) || 'Chief Dermatologist & Aesthetic Physician';
+  const currentBaseAccountRole = profile?.account_role ?? 'admin';
+
   const dirty =
     !!profile &&
     (fullName.trim() !== (profile.full_name ?? '') ||
+      role.trim() !== currentBaseRole ||
+      accountRole !== currentBaseAccountRole ||
       email.trim().toLowerCase() !== (profile.email ?? '').toLowerCase() ||
       pendingAvatar !== null ||
       removeAvatar);
@@ -304,29 +356,72 @@ export function ProfileForm() {
             )}
           </div>
 
-          {/* Read-only block */}
-          <div className="rounded-lg border border-border bg-muted p-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {t('accountDetails')}
-            </p>
-            <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-muted-foreground">{t('role')}</dt>
-                <dd className="mt-0.5 font-mono text-foreground">
-                  {profile?.role ?? 'user'}
-                </dd>
+          {/* Account Details & Role Settings */}
+          <div className="rounded-lg border border-border bg-muted/60 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t('accountDetails')}
+              </p>
+              <span className="text-[11px] text-primary font-medium flex items-center gap-1.5 bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                Role is editable
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-1">
+                <Label htmlFor="profile-role" className="text-xs font-semibold text-foreground">
+                  {t('role')} / Clinical Designation
+                </Label>
+                <Input
+                  id="profile-role"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  placeholder="Chief Dermatologist & Aesthetic Physician"
+                  maxLength={120}
+                  disabled={saving}
+                  className="bg-background text-sm h-9 border-border"
+                />
               </div>
-              <div>
-                <dt className="text-muted-foreground">{t('joined')}</dt>
-                <dd className="mt-0.5 text-foreground">{joined}</dd>
+
+              <div className="space-y-1.5 sm:col-span-1">
+                <Label htmlFor="account-role-select" className="text-xs font-semibold text-foreground">
+                  Permission Access Level
+                </Label>
+                <Select
+                  value={accountRole}
+                  onValueChange={(val) => val && setAccountRole(val as AccountRole)}
+                  disabled={saving}
+                >
+                  <SelectTrigger id="account-role-select" className="bg-background text-sm h-9 border-border">
+                    <SelectValue>
+                      {accountRole === 'admin' || accountRole === 'super_admin' || accountRole === 'owner'
+                        ? 'Admin (Full Control)'
+                        : accountRole === 'doctor' || accountRole === 'manager' || accountRole === 'agent'
+                        ? 'Doctor (Clinical & Appointments)'
+                        : 'Staff (Reception & Chat)'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin (Full Control)</SelectItem>
+                    <SelectItem value="doctor">Doctor (Clinical & Appointments)</SelectItem>
+                    <SelectItem value="staff">Staff (Reception & Chat)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="sm:col-span-2">
-                <dt className="text-muted-foreground">{t('userId')}</dt>
-                <dd className="mt-0.5 break-all font-mono text-xs text-muted-foreground">
+
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">{t('joined')}</dt>
+                <dd className="mt-1 text-sm text-foreground">{joined}</dd>
+              </div>
+
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground">{t('userId')}</dt>
+                <dd className="mt-1 break-all font-mono text-xs text-muted-foreground">
                   {user?.id ?? '—'}
                 </dd>
               </div>
-            </dl>
+            </div>
           </div>
 
           {!profile && (

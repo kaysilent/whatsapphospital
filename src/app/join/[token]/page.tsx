@@ -275,7 +275,7 @@ export default function JoinPage() {
                   Create a new account instead
                 </Button>
               </Link>
-              <Link href="/login">
+              <Link href="/admin">
                 <Button
                   variant="outline"
                   className="w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -417,7 +417,7 @@ export default function JoinPage() {
             Create account &amp; join
           </Button>
         </Link>
-        <Link href={`/login?invite=${encodeURIComponent(token!)}`}>
+        <Link href={`/admin?invite=${encodeURIComponent(token!)}`}>
           <Button
             variant="outline"
             className="w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"

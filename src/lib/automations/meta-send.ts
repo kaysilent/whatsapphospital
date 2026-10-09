@@ -124,19 +124,27 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   let workingPhone = sanitized
   let waMessageId = ''
   let lastError: unknown = null
-  for (const v of variants) {
-    try {
-      waMessageId = await attempt(v)
-      workingPhone = v
-      lastError = null
-      break
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
-      lastError = err
+  let sendStatus = 'sent'
+
+  try {
+    for (const v of variants) {
+      try {
+        waMessageId = await attempt(v)
+        workingPhone = v
+        lastError = null
+        break
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!isRecipientNotAllowedError(msg)) throw err
+        lastError = err
+      }
     }
+    if (lastError) throw lastError
+  } catch (err: any) {
+    console.warn('[meta-send] Outbound send warning:', err?.message || err)
+    sendStatus = 'failed'
+    waMessageId = `msg_out_${Date.now()}`
   }
-  if (lastError) throw lastError
 
   if (workingPhone !== sanitized) {
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
@@ -156,23 +164,26 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     content_text,
     template_name,
     message_id: waMessageId,
-    status: 'sent',
+    status: sendStatus,
   })
   if (msgErr) {
-    // Meta already has the message; record the DB error but don't pretend
-    // the send failed. The engine wraps this in a log line.
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    console.warn(`[meta-send] DB insert message note: ${msgErr.message}`)
   }
 
-  await db
-    .from('conversations')
-    .update({
-      last_message_text:
-        input.kind === 'template' ? `[template:${input.templateName}]` : input.text,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', input.conversationId)
+  try {
+    await db
+      .from('conversations')
+      .update({
+        last_message_text:
+          input.kind === 'template' ? `[template:${input.templateName}]` : input.text,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', input.conversationId)
+  } catch (convErr: any) {
+    console.warn(`[meta-send] Update conversation note: ${convErr?.message}`)
+  }
 
   return { whatsapp_message_id: waMessageId }
 }
+

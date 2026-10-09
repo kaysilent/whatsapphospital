@@ -22,71 +22,110 @@ export async function POST(req: NextRequest) {
     let supabaseAuthUser = null;
     let supabaseSession = null;
 
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      try {
-        const supabase = createServerClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-          {
-            cookies: {
-              getAll() {
-                return cookieStore.getAll();
-              },
-              setAll(cookiesToSet) {
-                cookiesToSet.forEach((cookie) => {
-                  pendingCookies.push(cookie);
-                  try {
-                    cookieStore.set(cookie.name, cookie.value, cookie.options);
-                  } catch (err) {
-                    // Ignore cookieStore errors in API route context
-                  }
-                });
-              },
-            },
-          }
-        );
-
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-
-        if (!error && data?.user) {
-          supabaseAuthUser = data.user;
-          supabaseSession = data.session;
-        }
-      } catch (err) {
-        console.warn('[API Auth Login] Supabase connection notice:', err);
-      }
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      return NextResponse.json(
+        { error: 'Authentication service not configured on server' },
+        { status: 500 }
+      );
     }
 
-    const doctorName = email.includes('@')
-      ? email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
-      : 'Dr. Ananya Sharma';
+    try {
+      const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        {
+          cookies: {
+            getAll() {
+              return cookieStore.getAll();
+            },
+            setAll(cookiesToSet) {
+              cookiesToSet.forEach((cookie) => {
+                pendingCookies.push(cookie);
+                try {
+                  cookieStore.set(cookie.name, cookie.value, cookie.options);
+                } catch (err) {
+                  // Ignore cookieStore errors in API route context
+                }
+              });
+            },
+          },
+        }
+      );
 
-    // Build the JSON response
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        return NextResponse.json(
+          { error: error.message || 'Invalid email or password' },
+          { status: 401 }
+        );
+      }
+
+      if (data?.user) {
+        supabaseAuthUser = data.user;
+        supabaseSession = data.session;
+      }
+    } catch (err: any) {
+      console.error('[API Auth Login] Supabase error:', err);
+      return NextResponse.json(
+        { error: err.message || 'Authentication service error' },
+        { status: 500 }
+      );
+    }
+
+    if (!supabaseAuthUser) {
+      return NextResponse.json(
+        { error: 'Invalid login credentials' },
+        { status: 401 }
+      );
+    }
+
+    // Determine user profile & role from Supabase DB
+    let userRole = 'admin';
+    let userFullName = supabaseAuthUser.user_metadata?.full_name || '';
+
+    try {
+      const { supabaseAdmin } = await import('@/lib/supabase/admin');
+      const admin = supabaseAdmin();
+      const { data: profile } = await admin
+        .from('profiles')
+        .select('account_role, full_name, role')
+        .eq('user_id', supabaseAuthUser.id)
+        .maybeSingle();
+
+      if (profile) {
+        userRole = profile.account_role || profile.role || userRole;
+        if (profile.full_name) userFullName = profile.full_name;
+      }
+    } catch (e) {
+      console.warn('[API Auth Login] Profile lookup notice:', e);
+    }
+
+    if (!userFullName) {
+      const cleanEmail = supabaseAuthUser.email || email;
+      userFullName = cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+    }
+
+    // Build the successful JSON response
     const response = NextResponse.json({
       success: true,
-      user: supabaseAuthUser ? {
+      user: {
         id: supabaseAuthUser.id,
         email: supabaseAuthUser.email,
-        full_name: supabaseAuthUser.user_metadata?.full_name || doctorName,
-      } : {
-        id: 'doctor-session',
-        email: email.trim(),
-        full_name: doctorName.startsWith('Dr') ? doctorName : `Dr. ${doctorName}`,
+        full_name: userFullName,
+        role: userRole,
       },
       session: supabaseSession ? {
         access_token: supabaseSession.access_token,
         refresh_token: supabaseSession.refresh_token,
         expires_at: supabaseSession.expires_at,
-      } : {
-        access_token: 'wacrm-session-token',
-        expires_at: Math.floor(Date.now() / 1000) + 604800,
-      }
+      } : undefined
     });
 
-    // Always set demo session cookie so SSR and middleware authenticate immediately
+    // Set demo session cookie as authenticated session marker
     response.cookies.set('wacrm_demo_session', '1', {
       path: '/',
       sameSite: 'lax',
@@ -114,4 +153,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

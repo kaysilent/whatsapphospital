@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useMemo, type ReactNode } from 'react';
+import { Suspense, useMemo, useState, useEffect, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
@@ -49,16 +49,31 @@ function SettingsPageInner() {
   const { mode } = useTheme();
   const t = useTranslations('Settings');
 
-  // The URL (`?tab=`) is the single source of truth for the active
-  // section — deep-linkable, and it keeps the existing links in the
-  // app sidebar/header working. Legacy tab values (tags, custom-fields)
-  // resolve onto their new home; unknown/empty → the Overview landing.
-  const section = resolveSection(searchParams.get('tab'));
+  // Maintain local state for instant 0ms tab switching
+  const [section, setSection] = useState<SettingsSection>(() => {
+    return resolveSection(searchParams?.get('tab') ?? null);
+  });
+
+  // Keep in sync with URL search params
+  useEffect(() => {
+    const tabParam = searchParams?.get('tab');
+    if (tabParam) {
+      setSection(resolveSection(tabParam));
+    }
+  }, [searchParams]);
 
   const go = (next: SettingsSection) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('tab', next);
-    router.replace(`/settings?${params.toString()}`, { scroll: false });
+    setSection(next);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', next);
+      window.history.replaceState(null, '', url.toString());
+    } catch {}
+    try {
+      const params = new URLSearchParams(searchParams?.toString() ?? '');
+      params.set('tab', next);
+      router.replace(`/settings?${params.toString()}`, { scroll: false });
+    } catch {}
   };
 
   // Cheap, fetch-free rail hints. The Overview landing carries the

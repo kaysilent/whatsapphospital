@@ -109,7 +109,7 @@ describe('50+ Concurrent Users Load & Stress Test Suite', () => {
       expect(msg).toContain('Ananya Patel');
       expect(msg).toContain('₹500');
       expect(msg).toContain('Dr. Mrinalini');
-      expect(msg).toContain('Suite 402, Green Glen Towers');
+      expect(msg).toContain('Road No.11 B, Jubilee hills');
     });
 
     expect(durationMs).toBeLessThan(200);

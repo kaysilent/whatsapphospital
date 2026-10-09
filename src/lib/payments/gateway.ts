@@ -22,25 +22,37 @@ export interface PaymentConfig {
   require_payment_for_booking: boolean;
   auto_send_whatsapp_receipt: boolean;
   thank_you_message_template: string;
+  bank_name?: string;
+  account_number?: string;
+  ifsc_code?: string;
+  account_holder_name?: string;
+  auto_settlement_schedule?: string;
+  is_bank_verified?: boolean;
 }
 
 export const DEFAULT_PAYMENT_CONFIG: PaymentConfig = {
   gateway_provider: 'razorpay',
   is_enabled: true,
-  is_test_mode: true,
-  razorpay_key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_lafleur_clinic',
-  razorpay_key_secret: process.env.RAZORPAY_KEY_SECRET || '',
+  is_test_mode: false,
+  razorpay_key_id: process.env.RAZORPAY_KEY_ID || 'rzp_live_Tkiy8JNohenPgb',
+  razorpay_key_secret: process.env.RAZORPAY_KEY_SECRET || 'SgkpZgohcWUhxN8QfXI96ZTO',
   razorpay_webhook_secret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
   stripe_publishable_key: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
   stripe_secret_key: process.env.STRIPE_SECRET_KEY || '',
   upi_vpa: 'lafleur@okhdfcbank',
   merchant_name: 'La Fleur Aesthetic Clinic',
   currency: 'INR',
-  booking_fee: 500,
+  booking_fee: 10,
   default_consultation_fee: 500,
-  default_advance_token_fee: 500,
+  default_advance_token_fee: 10,
   require_payment_for_booking: true,
   auto_send_whatsapp_receipt: true,
+  bank_name: 'HDFC Bank (Commercial Healthcare)',
+  account_number: '•••• •••• •••• 9102',
+  ifsc_code: 'HDFC0001824',
+  account_holder_name: 'Dr. Mrinalini Aesthetic Clinic Pvt Ltd',
+  auto_settlement_schedule: 'T+1 Daily at 18:00 IST',
+  is_bank_verified: true,
   thank_you_message_template: `🎉 *Payment Received & Appointment Confirmed!*
 
 Dear {patient_name}, your payment of ₹{amount} for {treatment} with Dr. Mrinalini has been successfully received.
@@ -52,8 +64,8 @@ Dear {patient_name}, your payment of ₹{amount} for {treatment} with Dr. Mrinal
 💳 Payment Mode: {payment_mode}
 
 📍 Clinic Location:
-Suite 402, Green Glen Towers, Outer Ring Road, Bangalore
-Maps: https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Bangalore
+Road No.11 B, Jubilee hills, Hyderabad - 500045
+Maps: https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Hyderabad
 
 We look forward to welcoming you! Please arrive 10 minutes prior to your scheduled slot.`,
 };
@@ -186,4 +198,68 @@ export function formatThankYouMessage(
   msg = msg.replace(/{receipt_id}/g, data.receipt_id || `REC-${Date.now().toString().slice(-6)}`);
   msg = msg.replace(/{payment_mode}/g, data.payment_mode || 'Razorpay / UPI');
   return msg;
+}
+
+/**
+ * Diagnostic tool: Test connectivity and authentication with Razorpay API
+ */
+export async function testRazorpayConnection(
+  keyId: string,
+  keySecret: string
+): Promise<{ success: boolean; message: string; latencyMs: number; mode: 'live' | 'test' | 'mock' }> {
+  const start = Date.now();
+  const cleanKey = (keyId || '').trim();
+  const cleanSecret = (keySecret || '').trim();
+
+  if (!cleanKey || !cleanSecret) {
+    return {
+      success: false,
+      message: 'Both Razorpay Key ID and Key Secret are required to test connection.',
+      latencyMs: 0,
+      mode: 'test',
+    };
+  }
+
+  if (cleanKey.includes('lafleur_clinic')) {
+    return {
+      success: true,
+      message: 'Simulated sandbox test mode active and healthy (Ready for appointments).',
+      latencyMs: 15,
+      mode: 'mock',
+    };
+  }
+
+  try {
+    const authHeader = 'Basic ' + Buffer.from(`${cleanKey}:${cleanSecret}`).toString('base64');
+    const res = await fetch('https://api.razorpay.com/v1/payments?count=1', {
+      headers: { Authorization: authHeader },
+    });
+    const latencyMs = Date.now() - start;
+
+    if (res.ok) {
+      const mode = cleanKey.startsWith('rzp_live') ? 'live' : 'test';
+      return {
+        success: true,
+        message: `Successfully connected to Razorpay API in ${mode.toUpperCase()} mode!`,
+        latencyMs,
+        mode,
+      };
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      const desc = errData.error?.description || `Authentication failed with status ${res.status}`;
+      return {
+        success: false,
+        message: `${desc}. Please verify your Key ID and Key Secret from Razorpay Dashboard > Settings > API Keys.`,
+        latencyMs,
+        mode: cleanKey.startsWith('rzp_live') ? 'live' : 'test',
+      };
+    }
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || 'Network error reaching api.razorpay.com',
+      latencyMs: Date.now() - start,
+      mode: 'test',
+    };
+  }
 }

@@ -105,10 +105,21 @@ export function Step3Personalize({
       setCustomFields(fieldsRes.data ?? []);
       setLoadingFields(false);
 
-      const contact = contactRes.data ?? null;
+      let contact = contactRes.data ?? null;
+      if (!contact) {
+        try {
+          const res = await fetch('/api/contacts');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.contacts && data.contacts.length > 0) {
+              contact = data.contacts[0];
+            }
+          }
+        } catch {}
+      }
       setFirstContact(contact);
 
-      if (contact) {
+      if (contact && contact.id) {
         const { data: customVals } = await supabase
           .from('contact_custom_values')
           .select('custom_field_id, value')

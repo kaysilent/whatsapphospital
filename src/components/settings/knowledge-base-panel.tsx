@@ -27,7 +27,8 @@ import {
   FileCode,
   Tag,
   Loader2,
-  ArrowRight
+  ArrowRight,
+  Bot
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -234,12 +235,11 @@ export function KnowledgeBasePanel() {
           </Button>
 
           <Link
-            href="/demo"
+            href="/inbox"
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 text-xs font-semibold shadow-xs transition-colors"
           >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>Test in WhatsApp Simulator</span>
-            <ArrowRight className="h-3.5 w-3.5" />
+            <Bot className="h-3.5 w-3.5" />
+            <span>Open Live Inbox</span>
           </Link>
         </div>
       </div>

@@ -58,7 +58,7 @@ export default function ForgotPasswordPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/login">
+            <Link href="/admin">
               <Button
                 variant="outline"
                 className="w-full text-xs h-10"
@@ -124,7 +124,7 @@ export default function ForgotPasswordPage() {
 
           <div className="mt-6 pt-5 border-t border-border/80 flex items-center justify-center">
             <Link
-              href="/login"
+              href="/admin"
               className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />

@@ -3,14 +3,7 @@
  * Provides centralized storage, retrieval, and AI sync for hospital details and treatment catalog.
  */
 
-export type TreatmentCategory = 
-  | 'Skin' 
-  | 'Laser' 
-  | 'Aesthetic' 
-  | 'Body' 
-  | 'Hair' 
-  | 'Wellness' 
-  | 'Consultation';
+export type TreatmentCategory = string;
 
 export interface Treatment {
   id: string;
@@ -91,6 +84,7 @@ export interface HospitalProfile {
   city: string;
   postalCode: string;
   emergencyContact: string;
+  doctorWhatsapp?: string;
   consultationFee: number;
   advanceTokenFee: number;
   clinicBalanceFee: number;
@@ -106,19 +100,20 @@ export const DEFAULT_HOSPITAL_PROFILE: HospitalProfile = {
   tagline: 'Advanced Clinical Aesthetics, Trichology & Aesthetic Medicine',
   leadDoctor: 'Dr. Mrinalini',
   doctorTitle: 'MD, Senior Aesthetic Specialist & Chief Physician',
-  phone: '+91 98765 43210',
-  whatsapp: '+91 98765 43210',
-  email: 'care@lafleurwellness.com',
+  phone: '+91 81478 66324',
+  whatsapp: '+91 81478 66324',
+  email: 'lafleurclinicstpa@gmail.com',
   website: 'https://lafleurwellness.com',
   instagram: 'https://instagram.com/lafleur.clinic',
-  mapsUrl: 'https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Bangalore',
-  address: 'Suite 402, Green Glen Towers, Outer Ring Road',
-  city: 'Bangalore',
-  postalCode: '560103',
-  emergencyContact: '+91 98765 00112',
+  mapsUrl: 'https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Hyderabad',
+  address: 'Road No.11 B, Jubilee hills, 500045.',
+  city: 'Hyderabad',
+  postalCode: '500045',
+  emergencyContact: '+91 81478 66324',
+  doctorWhatsapp: '+91 81478 66324',
   consultationFee: 500,
-  advanceTokenFee: 300,
-  clinicBalanceFee: 200,
+  advanceTokenFee: 100,
+  clinicBalanceFee: 400,
   currency: '₹',
   openingHoursSummary: 'Monday – Saturday: 10:00 AM – 07:00 PM (Closed on Sunday)',
   aboutText: 'Premier center for evidence-based clinical aesthetics, advanced laser skin rejuvenation, anti-aging therapies, and personalized hair restoration under Dr. Mrinalini. Tied up with leading plastic surgeons in the city.',
@@ -130,7 +125,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-lhr',
     name: 'Laser Hair Reduction',
-    category: 'Laser',
+    category: 'Laser & Aesthetics',
     description: 'US-FDA approved triple-wavelength diode laser targeting hair follicles safely for painless, permanent hair reduction across Indian skin types.',
     durationMinutes: 45,
     price: 4999,
@@ -148,7 +143,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-carbon-laser',
     name: 'Carbon Laser Hollywood Peel',
-    category: 'Laser',
+    category: 'Laser & Aesthetics',
     description: 'Q-Switched Nd:YAG laser with liquid carbon for instantaneous porcelain glow, sebum control, blackhead clearance, and pore tightening.',
     durationMinutes: 45,
     price: 3800,
@@ -166,7 +161,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-prp-hair',
     name: 'PRP Hair Therapy & Scalp Restoration',
-    category: 'Hair',
+    category: 'Trichology & Hair Restoration',
     description: 'Autologous Platelet-Rich Plasma micro-injections concentrated with growth factors to stimulate dormant hair follicles and reverse thinning.',
     durationMinutes: 60,
     price: 4500,
@@ -184,7 +179,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-gfc-hair',
     name: 'GFC Hair Restoration',
-    category: 'Hair',
+    category: 'Trichology & Hair Restoration',
     description: 'Advanced Growth Factor Concentrate therapy extracted from patient blood to regenerate hair density with zero downtime.',
     durationMinutes: 45,
     price: 6500,
@@ -202,7 +197,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-hydrafacial',
     name: 'HydraFacial Deluxe',
-    category: 'Skin',
+    category: 'Dermatology & Skin Care',
     description: 'Medical-grade hydra-dermabrasion vortex cleansing, painless extraction, peptide infusion, and deep antioxidant hydration.',
     durationMinutes: 45,
     price: 3500,
@@ -220,7 +215,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-pigmentation',
     name: 'Pigmentation & Chemical Peels',
-    category: 'Skin',
+    category: 'Dermatology & Skin Care',
     description: 'Targeted AHA/BHA chemical peels for active acne marks, stubborn dark spots, uneven skin tone, and cellular renewal.',
     durationMinutes: 30,
     price: 2200,
@@ -238,7 +233,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-skin-tightening',
     name: 'Skin Tightening (RF / MNRF)',
-    category: 'Skin',
+    category: 'Dermatology & Skin Care',
     description: 'Fractional radiofrequency microneedling with dermal subcision to stimulate collagen remodeling and smooth depressed acne scars and textural irregularities.',
     durationMinutes: 60,
     price: 5500,
@@ -256,7 +251,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-botox',
     name: 'Anti-Aging & Botox',
-    category: 'Aesthetic',
+    category: 'Anti-Aging & Cosmetology',
     description: 'US-FDA approved botulinum toxin micro-injections for forehead lines, crow\'s feet, frown lines, and facial contouring by Dr. Mrinalini.',
     durationMinutes: 30,
     price: 8500,
@@ -274,7 +269,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-fillers',
     name: 'Dermal Fillers & Lip Enhancement',
-    category: 'Aesthetic',
+    category: 'Anti-Aging & Cosmetology',
     description: 'Premium hyaluronic acid fillers for cheek volume restoration, tear trough under-eye correction, and natural lip definition.',
     durationMinutes: 45,
     price: 18000,
@@ -292,7 +287,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-body-contouring',
     name: 'Body Contouring & Cellulite Reduction',
-    category: 'Body',
+    category: 'Wellness & Body Contouring',
     description: 'Non-invasive acoustic wave and radiofrequency body sculpting targeting stubborn subcutaneous fat and skin tightening.',
     durationMinutes: 60,
     price: 7500,
@@ -310,7 +305,7 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
   {
     id: 'trt-consultation',
     name: 'Clinical Consultation',
-    category: 'Consultation',
+    category: 'Clinical Consultation',
     description: 'Comprehensive clinical analysis, personalized skin barrier diagnosis, and customized medical prescription by Dr. Mrinalini.',
     durationMinutes: 20,
     price: 500,
@@ -330,19 +325,61 @@ export const DEFAULT_TREATMENTS: Treatment[] = [
 export const HOSPITAL_PROFILE_STORAGE_KEY = 'wacrm_hospital_profile_v1';
 export const TREATMENTS_STORAGE_KEY = 'wacrm_hospital_treatments_v1';
 
+let globalServerHospitalProfile: HospitalProfile = { ...DEFAULT_HOSPITAL_PROFILE };
+
+export function setGlobalServerHospitalProfile(profile: Partial<HospitalProfile>) {
+  globalServerHospitalProfile = {
+    ...globalServerHospitalProfile,
+    ...profile,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (typeof window === 'undefined') {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const filePath = path.join(process.cwd(), 'hospital-profile.json');
+      fs.writeFileSync(filePath, JSON.stringify(globalServerHospitalProfile, null, 2), 'utf8');
+    } catch {}
+  }
+}
+
+export function getGlobalServerHospitalProfile(): HospitalProfile {
+  if (typeof window === 'undefined') {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const filePath = path.join(process.cwd(), 'hospital-profile.json');
+      if (fs.existsSync(filePath)) {
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(fileContent);
+        if (parsed && typeof parsed === 'object') {
+          globalServerHospitalProfile = {
+            ...DEFAULT_HOSPITAL_PROFILE,
+            ...globalServerHospitalProfile,
+            ...parsed,
+          };
+        }
+      }
+    } catch {}
+  }
+  return globalServerHospitalProfile;
+}
+
 export function getRuntimeHospitalProfile(): HospitalProfile {
   if (typeof window !== 'undefined') {
     try {
       const stored = localStorage.getItem(HOSPITAL_PROFILE_STORAGE_KEY);
       if (stored) {
-        return { ...DEFAULT_HOSPITAL_PROFILE, ...JSON.parse(stored) };
+        return { ...DEFAULT_HOSPITAL_PROFILE, ...globalServerHospitalProfile, ...JSON.parse(stored) };
       }
     } catch {}
   }
-  return DEFAULT_HOSPITAL_PROFILE;
+  return getGlobalServerHospitalProfile();
 }
 
 export function saveHospitalProfile(profile: HospitalProfile): void {
+  setGlobalServerHospitalProfile(profile);
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem(HOSPITAL_PROFILE_STORAGE_KEY, JSON.stringify({
@@ -391,14 +428,16 @@ export function buildHospitalKnowledgeText(profile?: HospitalProfile, treatments
   text += `Email: ${p.email}\n`;
   text += `Address: ${p.address}, ${p.city} - ${p.postalCode}\n`;
   text += `Emergency Contact: ${p.emergencyContact}\n`;
-  text += `Consultation Fee: ${p.currency}${p.consultationFee}\n`;
+  text += `Doctor Consultation Fee: ${p.currency}${p.consultationFee}\n`;
+  text += `Advance Booking Fee: ${p.currency}${p.advanceTokenFee} (payable online to secure appointment slot)\n`;
+  text += `Clinic Balance Payable on Arrival: ${p.currency}${p.clinicBalanceFee || Math.max(0, p.consultationFee - p.advanceTokenFee)} (payable at clinic reception desk)\n`;
   text += `Working Hours: ${p.openingHoursSummary}\n`;
   text += `About: ${p.aboutText}\n\n`;
 
   text += `=== ACTIVE TREATMENTS & PROCEDURES CATALOG (${trts.length} Available) ===\n`;
   trts.forEach((t, idx) => {
     text += `${idx + 1}. ${t.name} [${t.category}]\n`;
-    text += `   - Price: ${t.currency}${t.price.toLocaleString('en-IN')}\n`;
+    text += `   - Pricing: Evaluated in-person during clinical consultation\n`;
     text += `   - Duration: ${t.durationMinutes} minutes\n`;
     text += `   - Recommended Sittings: ${t.recommendedSittings} sitting${t.recommendedSittings > 1 ? 's' : ''} (${t.sittingInterval})\n`;
     text += `   - Description: ${t.description}\n`;

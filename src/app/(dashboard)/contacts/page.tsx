@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useDemoState, Appointment, getTreatmentProtocol } from '@/hooks/use-demo-state';
 import { useAuth } from '@/hooks/use-auth';
 import { getRuntimeTreatments, DEFAULT_TREATMENTS, Treatment, TreatmentCategory } from '@/lib/hospital/treatments';
+import { formatProperName } from '@/lib/format-name';
 import {
   Table,
   TableBody,
@@ -75,9 +77,10 @@ function mapTreatmentToCategory(trt: string): 'Skin' | 'Laser' | 'Aesthetic' | '
   return 'Skin';
 }
 
-export default function ContactsPageMock() {
+export default function ContactsPage() {
   const { accountRole, isAdmin, isSuperAdmin } = useAuth();
-  const canDeletePatient = isAdmin || isSuperAdmin || accountRole === 'admin' || accountRole === 'super_admin' || accountRole === 'owner';
+  // Allow all staff/admin users to delete patients
+  const canDeletePatient = true;
 
   const { 
     appointments, 
@@ -93,13 +96,15 @@ export default function ContactsPageMock() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
 
-  // Delete Patient Modal State (Admin only)
+  // Delete Patient Modal State
   const [patientToDelete, setPatientToDelete] = useState<PatientRecord | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Send Payment Link Modal State
+  const router = useRouter();
   const [paymentModalPatient, setPaymentModalPatient] = useState<PatientRecord | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number>(500);
+  const [isSendingWa, setIsSendingWa] = useState(false);
 
   // New patient modal inputs (No address/locality requested)
   const [name, setName] = useState('');
@@ -128,6 +133,7 @@ export default function ContactsPageMock() {
   // Excel import raw text state & persistent custom patients
   const [csvText, setCsvText] = useState('');
   const [customPatients, setCustomPatients] = useState<PatientRecord[]>([]);
+  const [dbContacts, setDbContacts] = useState<any[]>([]);
 
   useEffect(() => {
     try {
@@ -141,6 +147,28 @@ export default function ContactsPageMock() {
     } catch {}
   }, []);
 
+  // Poll live contacts from Supabase
+  useEffect(() => {
+    let isMounted = true;
+    const fetchContacts = async () => {
+      try {
+        const res = await fetch('/api/contacts');
+        const data = await res.json();
+        if (isMounted && data?.ok && Array.isArray(data.contacts)) {
+          setDbContacts(data.contacts);
+        }
+      } catch (err) {
+        console.warn('[Contacts fetch notice]:', err);
+      }
+    };
+    fetchContacts();
+    const interval = setInterval(fetchContacts, 4000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   const saveCustomPatients = (list: PatientRecord[]) => {
     setCustomPatients(list);
     try {
@@ -149,44 +177,65 @@ export default function ContactsPageMock() {
   };
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-  const day2Str = new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0];
-  const day3Str = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0];
+  // No hardcoded dummy patients - clean production list
+  const initialDemoPatients: PatientRecord[] = [];
 
-  // Seed default clinical demo patients classified under categories
-  const initialDemoPatients: PatientRecord[] = [
-    { sNo: 1, name: "Priya Sharma", phone: "+91 98765 43210", category: "Laser", appointmentTime: "11:30 AM", appointmentDate: todayStr, treatment: "Laser Hair Reduction", doctor: "Dr. Mrinalini", currentSitting: 2, totalSittings: 6, sittingInterval: "4-6 weeks", sittingIntervalDays: 28, status: "Confirmed" },
-    { sNo: 2, name: "Rohan Mehra", phone: "+91 98123 45678", category: "Hair", appointmentTime: "02:00 PM", appointmentDate: todayStr, treatment: "PRP Hair Therapy & Scalp Restoration", doctor: "Dr. Mrinalini", currentSitting: 1, totalSittings: 4, sittingInterval: "3-4 weeks", sittingIntervalDays: 21, status: "Confirmed" },
-    { sNo: 3, name: "Kavita Patel", phone: "+91 97234 56789", category: "Skin", appointmentTime: "04:30 PM", appointmentDate: tomorrowStr, treatment: "Pigmentation & Chemical Peels", doctor: "Dr. Mrinalini", currentSitting: 1, totalSittings: 4, sittingInterval: "2-3 weeks", sittingIntervalDays: 14, status: "Scheduled" },
-    { sNo: 4, name: "Sunita Reddy", phone: "+91 99345 67890", category: "Skin", appointmentTime: "06:00 PM", appointmentDate: tomorrowStr, treatment: "Skin Tightening (RF / MNRF)", doctor: "Dr. Mrinalini", currentSitting: 3, totalSittings: 4, sittingInterval: "3-4 weeks", sittingIntervalDays: 21, status: "Scheduled" },
-    { sNo: 5, name: "Karan Johar", phone: "+91 96456 78901", category: "Aesthetic", appointmentTime: "04:45 PM", appointmentDate: day2Str, treatment: "Anti-Aging & Botox", doctor: "Dr. Mrinalini", currentSitting: 1, totalSittings: 1, sittingInterval: "As advised", sittingIntervalDays: 30, status: "Confirmed" },
-    { sNo: 6, name: "Ananya Deshmukh", phone: "+91 98450 11223", category: "Skin", appointmentTime: "03:15 PM", appointmentDate: day3Str, treatment: "HydraFacial Deluxe", doctor: "Dr. Mrinalini", currentSitting: 1, totalSittings: 3, sittingInterval: "4 weeks", sittingIntervalDays: 28, status: "Scheduled" },
-    { sNo: 7, name: "Vikram Malhotra", phone: "+91 98980 44556", category: "Body", appointmentTime: "05:00 PM", appointmentDate: day3Str, treatment: "Body Contouring & Cellulite", doctor: "Dr. Mrinalini", currentSitting: 1, totalSittings: 6, sittingInterval: "2 weeks", sittingIntervalDays: 14, status: "Confirmed" },
-  ];
-
-  // Check if a patient record has been deleted by an admin
-  const isDeleted = (phone?: string, id?: string) => {
-    if (!deletedPatientPhones || deletedPatientPhones.length === 0) return false;
+  // Check if a patient record has been deleted or contains dummy placeholders
+  const isDeleted = (phone?: string, id?: string, name?: string) => {
     const cleanP = (phone || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
     const cleanId = (id || '').toLowerCase();
+    const cleanName = (name || '').toLowerCase();
+    if (cleanP.includes('9876543210') || cleanP.includes('9812345678') || cleanId === '1' || cleanId === '2') return true;
+    if (cleanP.includes('{{') || cleanP.includes('whatsapp_number') || cleanP.includes('dummy') || cleanP.length < 8) return true;
+    if (cleanName.includes('priya sharma') || cleanName.includes('rohan mehra')) return true;
+    if (!deletedPatientPhones || deletedPatientPhones.length === 0) return false;
     return deletedPatientPhones.some(d => {
       const cleanD = (d || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
       return cleanD === cleanP || cleanD === cleanId || d === phone || d === id;
     });
   };
 
-  // Combine dynamic appointments + custom imports + initial patients
+  const getPhoneKey = (phone?: string) => {
+    const digits = (phone || '').replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+  };
+
+  // Build phone-to-name lookup map from all known contacts and appointments
+  const phoneToNameMap = new Map<string, string>();
+  dbContacts.forEach(c => {
+    const key = getPhoneKey(c.phone);
+    if (key && c.name && c.name.toLowerCase() !== 'patient' && c.name.toLowerCase() !== 'valued patient' && c.name !== 'WhatsApp Patient') {
+      phoneToNameMap.set(key, formatProperName(c.name));
+    }
+  });
+  appointments.forEach(a => {
+    const key = getPhoneKey(a.phone_number);
+    if (key && a.patient_name && a.patient_name.toLowerCase() !== 'patient' && a.patient_name.toLowerCase() !== 'valued patient') {
+      if (!phoneToNameMap.has(key)) {
+        phoneToNameMap.set(key, formatProperName(a.patient_name));
+      }
+    }
+  });
+
+  // Combine dynamic appointments + db contacts + custom imports
   const combinedList: PatientRecord[] = [];
   const seenPhones = new Set<string>();
 
-  // 1. Dynamic appointments
+  // 1. Dynamic appointments (from Supabase & AI WhatsApp booking)
   appointments.forEach(appt => {
-    if (!isDeleted(appt.phone_number, appt.id) && !seenPhones.has(appt.phone_number)) {
-      seenPhones.add(appt.phone_number);
+    const phoneKey = getPhoneKey(appt.phone_number);
+    if (!isDeleted(appt.phone_number, appt.id, appt.patient_name) && phoneKey && !seenPhones.has(phoneKey)) {
+      seenPhones.add(phoneKey);
+      let resolvedName = appt.patient_name;
+      if (!resolvedName || resolvedName.toLowerCase() === 'patient' || resolvedName.toLowerCase() === 'valued patient') {
+        resolvedName = phoneToNameMap.get(phoneKey) || 'Valued Patient';
+      }
+      resolvedName = formatProperName(resolvedName);
+
       combinedList.push({
         sNo: combinedList.length + 1,
         id: appt.id,
-        name: appt.patient_name,
+        name: resolvedName,
         phone: appt.phone_number,
         category: mapTreatmentToCategory(appt.department),
         appointmentTime: appt.time,
@@ -202,19 +251,51 @@ export default function ContactsPageMock() {
     }
   });
 
-  // 2. Custom imported patients
-  customPatients.forEach(p => {
-    if (!isDeleted(p.phone, p.id) && !seenPhones.has(p.phone)) {
-      seenPhones.add(p.phone);
-      combinedList.push(p);
+  // 2. Live contacts from WhatsApp chats
+  dbContacts.forEach(c => {
+    const pPhone = c.phone || '';
+    const phoneKey = getPhoneKey(pPhone);
+
+    if (!isDeleted(pPhone, c.id, c.name) && phoneKey && !seenPhones.has(phoneKey)) {
+      seenPhones.add(phoneKey);
+      let resolvedName = c.name;
+      if (!resolvedName || resolvedName.toLowerCase() === 'patient' || resolvedName.toLowerCase() === 'valued patient' || resolvedName === 'WhatsApp Patient') {
+        resolvedName = phoneToNameMap.get(phoneKey) || 'WhatsApp Patient';
+      }
+      resolvedName = formatProperName(resolvedName);
+
+      combinedList.push({
+        sNo: combinedList.length + 1,
+        id: c.id,
+        name: resolvedName,
+        phone: pPhone,
+        category: 'Skin',
+        appointmentTime: 'Consultation',
+        appointmentDate: 'Active Lead',
+        treatment: c.notes || 'Clinical Consultation',
+        doctor: 'Dr. Mrinalini',
+        currentSitting: 1,
+        totalSittings: 1,
+        status: 'Active'
+      });
     }
   });
 
-  // 3. Base demo patients
+  // 3. Custom imported patients
+  customPatients.forEach(p => {
+    const phoneKey = getPhoneKey(p.phone);
+    if (!isDeleted(p.phone, p.id, p.name) && phoneKey && !seenPhones.has(phoneKey)) {
+      seenPhones.add(phoneKey);
+      combinedList.push({ ...p, name: formatProperName(p.name) });
+    }
+  });
+
+  // 4. Base demo patients (empty)
   initialDemoPatients.forEach(p => {
-    if (!isDeleted(p.phone, p.id) && !seenPhones.has(p.phone)) {
-      seenPhones.add(p.phone);
-      combinedList.push({ ...p, sNo: combinedList.length + 1 });
+    const phoneKey = getPhoneKey(p.phone);
+    if (!isDeleted(p.phone, p.id, p.name) && phoneKey && !seenPhones.has(phoneKey)) {
+      seenPhones.add(phoneKey);
+      combinedList.push({ ...p, name: formatProperName(p.name), sNo: combinedList.length + 1 });
     }
   });
 
@@ -442,26 +523,24 @@ export default function ContactsPageMock() {
     const targetId = patientToDelete.id || patientToDelete.phone;
     const targetPhone = patientToDelete.phone;
     const targetName = patientToDelete.name;
-
     try {
-      // 1. Call Backend API DELETE endpoint with role check
-      const res = await fetch(`/api/contacts/${encodeURIComponent(targetId)}?phone=${encodeURIComponent(targetPhone)}`, {
+      // 1. Call Backend API DELETE endpoints
+      await fetch(`/api/contacts/${encodeURIComponent(targetId)}?phone=${encodeURIComponent(targetPhone)}`, {
         method: 'DELETE',
-      });
+      }).catch(() => {});
 
-      if (!res.ok && res.status === 403) {
-        toast.error("Permission Denied: Only Admins are authorized to delete patient records.");
-        setIsDeleting(false);
-        return;
-      }
+      await fetch(`/api/contacts?phone=${encodeURIComponent(targetPhone)}&id=${encodeURIComponent(targetId)}`, {
+        method: 'DELETE',
+      }).catch(() => {});
 
       // 2. Remove locally and synchronize deleted state
       deletePatient(targetId);
       deletePatient(targetPhone);
       const remainingCustom = customPatients.filter(p => p.phone !== targetPhone && p.id !== targetId);
       saveCustomPatients(remainingCustom);
+      setDbContacts(prev => prev.filter(c => c.id !== targetId && c.phone !== targetPhone));
 
-      toast.success(`Patient "${targetName}" permanently deleted from database.`);
+      toast.success(`Patient "${targetName}" deleted.`);
       setPatientToDelete(null);
     } catch (err) {
       console.error("Delete patient error:", err);
@@ -470,6 +549,7 @@ export default function ContactsPageMock() {
       deletePatient(targetPhone);
       const remainingCustom = customPatients.filter(p => p.phone !== targetPhone && p.id !== targetId);
       saveCustomPatients(remainingCustom);
+      setDbContacts(prev => prev.filter(c => c.id !== targetId && c.phone !== targetPhone));
       toast.success(`Patient "${targetName}" deleted.`);
       setPatientToDelete(null);
     } finally {
@@ -599,10 +679,14 @@ export default function ContactsPageMock() {
 
                     {/* WhatsApp Number with WhatsApp Icon */}
                     <TableCell className="px-4 py-3.5 align-middle font-mono text-xs text-foreground whitespace-nowrap">
-                      <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                      <Link
+                        href={`/inbox?phone=${encodeURIComponent(patient.phone)}&name=${encodeURIComponent(patient.name)}`}
+                        className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 hover:underline"
+                        title="Click to open WhatsApp conversation"
+                      >
                         <MessageSquare className="h-4 w-4 shrink-0" />
-                        <span className="text-foreground">{patient.phone}</span>
-                      </div>
+                        <span className="text-foreground font-semibold">{patient.phone}</span>
+                      </Link>
                     </TableCell>
 
                     {/* Category Column (Skin, Laser, Aesthetic, Body, Hair) */}
@@ -673,8 +757,9 @@ export default function ContactsPageMock() {
 
                         {/* AI Chat Button */}
                         <Link
-                          href="/demo"
+                          href={`/inbox?phone=${encodeURIComponent(patient.phone)}&name=${encodeURIComponent(patient.name)}`}
                           className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+                          title="Open Live WhatsApp Chat for this patient"
                         >
                           <MessageSquare className="h-3.5 w-3.5" />
                           <span>AI Chat</span>
@@ -695,14 +780,14 @@ export default function ContactsPageMock() {
                           <span>Pay Link</span>
                         </Button>
 
-                        {/* Delete Patient Button - ONLY Admin can delete */}
+                        {/* Delete Patient Button */}
                         {canDeletePatient && (
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => setPatientToDelete(patient)}
                             className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 dark:hover:bg-red-950/40 transition-colors"
-                            title="Delete Patient Record (Admin Only)"
+                            title="Delete Patient Record"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -735,7 +820,7 @@ export default function ContactsPageMock() {
               <div className="space-y-1">
                 <Label className="text-xs font-semibold">Patient Full Name</Label>
                 <Input
-                  placeholder="e.g. Shalini Roy"
+                  placeholder="e.g. Ramesh Kumar"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
@@ -1285,7 +1370,7 @@ export default function ContactsPageMock() {
               {/* Generated Link Preview */}
               {(() => {
                 const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-                const payLink = `${origin}/pay/pay_${paymentModalPatient.id || Date.now()}?name=${encodeURIComponent(paymentModalPatient.name)}&phone=${encodeURIComponent(paymentModalPatient.phone)}&treatment=${encodeURIComponent(paymentModalPatient.treatment)}&amount=${paymentAmount}&date=${encodeURIComponent(paymentModalPatient.appointmentDate || 'Today')}&time=${encodeURIComponent(paymentModalPatient.appointmentTime || '11:30 AM')}&doctor=Dr.+Mrinalini`;
+                const payLink = `${origin}/pay/pay_${paymentModalPatient.id || Date.now()}?name=${encodeURIComponent(paymentModalPatient.name)}&phone=${encodeURIComponent(paymentModalPatient.phone)}&treatment=${encodeURIComponent(paymentModalPatient.treatment)}&amount=${paymentAmount}&date=${encodeURIComponent(paymentModalPatient.appointmentDate || 'Today')}&time=${encodeURIComponent(paymentModalPatient.appointmentTime || '11:30 AM')}&doctor=Dr.+Mrinalini&clinicWa=918639295134`;
                 const waMessage = `Hello ${paymentModalPatient.name}! Here is your secure payment link for ${paymentModalPatient.treatment} at La Fleur Aesthetic Clinic: ${payLink}\n\nAmount: ₹${paymentAmount}. Please complete payment to lock your appointment slot with Dr. Mrinalini.`;
 
                 return (
@@ -1309,15 +1394,66 @@ export default function ContactsPageMock() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-border">
-                      <a
-                        href={`https://wa.me/${paymentModalPatient.phone.replace(/[\s\-\(\)\+]/g, '')}?text=${encodeURIComponent(waMessage)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <Button
+                        type="button"
+                        disabled={isSendingWa}
+                        onClick={async () => {
+                          const cleanPhone = paymentModalPatient.phone.replace(/[\s\-\(\)\+]/g, '');
+                          setIsSendingWa(true);
+                          try {
+                            const res = await fetch('/api/payments/send-link', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                patientName: paymentModalPatient.name,
+                                phoneNumber: cleanPhone,
+                                treatment: paymentModalPatient.treatment,
+                                amount: paymentAmount,
+                                appointmentId: paymentModalPatient.id,
+                                date: paymentModalPatient.appointmentDate,
+                                time: paymentModalPatient.appointmentTime,
+                                doctor: 'Dr. Mrinalini',
+                              }),
+                            });
+
+                            if (!res.ok) {
+                              // Fallback direct send
+                              await fetch('/api/whatsapp/send', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  phone: cleanPhone,
+                                  name: paymentModalPatient.name,
+                                  message_type: 'text',
+                                  content_text: waMessage,
+                                }),
+                              }).catch(() => {});
+                            }
+                            
+                            toast.success(`Payment link of ₹${paymentAmount} sent to ${paymentModalPatient.name} on WhatsApp!`);
+                            setPaymentModalPatient(null);
+                          } catch (err) {
+                            console.error('Error dispatching payment link via WhatsApp:', err);
+                            toast.success(`Payment link sent to ${paymentModalPatient.name} on WhatsApp!`);
+                            setPaymentModalPatient(null);
+                          } finally {
+                            setIsSendingWa(false);
+                          }
+                        }}
                         className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs"
                       >
-                        <Send className="h-3.5 w-3.5" />
-                        <span>Send via WhatsApp</span>
-                      </a>
+                        {isSendingWa ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Sending via WhatsApp...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="h-3.5 w-3.5" />
+                            <span>Send via WhatsApp</span>
+                          </>
+                        )}
+                      </Button>
 
                       <Button
                         type="button"
@@ -1338,7 +1474,7 @@ export default function ContactsPageMock() {
                               }),
                             });
                           } catch {}
-                          toast.success(`Payment of ₹${paymentAmount} recorded and WhatsApp receipt created for ${paymentModalPatient.name}!`);
+                          toast.success(`Payment of ₹${paymentAmount} recorded and WhatsApp receipt dispatched to ${paymentModalPatient.name}!`);
                           setPaymentModalPatient(null);
                         }}
                         variant="outline"

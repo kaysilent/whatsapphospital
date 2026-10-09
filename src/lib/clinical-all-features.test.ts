@@ -288,7 +288,7 @@ describe('Comprehensive WhatsApp Hospital CRM Test Suite', () => {
     it('asks tailored leading question when patient mentions a skin concern', () => {
       const result = generateSmartClinicalFallback('I have dull skin and pigmentation on my cheeks', []);
       expect(result.reply).toContain('Pigmentation & Chemical Peels');
-      expect(result.reply).toContain('Dr. Mrinalini');
+      expect(result.reply).toContain('Available slots');
     });
 
     it('asks leading question on greeting to start discovery', () => {

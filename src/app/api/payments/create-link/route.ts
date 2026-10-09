@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const {
       patientName,
-      phoneNumber,
+      phoneNumber = body.patientPhone || body.phone,
       treatment = 'Clinical Consultation',
       amount = 500,
       appointmentId,
@@ -109,6 +109,8 @@ export async function POST(request: Request) {
         ok: true,
         success: true,
         paymentId: generated.paymentId,
+        shortId: generated.paymentId,
+        paymentUrl: generated.linkUrl,
         paymentLinkUrl: generated.linkUrl,
         amount: generated.amount,
         currency: generated.currency,
@@ -124,6 +126,8 @@ export async function POST(request: Request) {
         ok: true,
         success: true,
         paymentId: generated.paymentId,
+        shortId: generated.paymentId,
+        paymentUrl: generated.linkUrl,
         paymentLinkUrl: generated.linkUrl,
         amount: generated.amount,
         currency: generated.currency,

@@ -29,7 +29,7 @@ import { useAuth } from '@/hooks/use-auth'
 
 export function HospitalConfigCard() {
   const { hospitalConfig, updateHospitalConfig, setHospitalStatus, activeDoctor, updateActiveDoctor } = useDoctorAvailability()
-  const { accountRole, canEditClinicalConfig } = useAuth()
+  const { profile, accountRole, canEditClinicalConfig } = useAuth()
   
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState<HospitalConfig>(hospitalConfig)
@@ -43,6 +43,9 @@ export function HospitalConfigCard() {
 
   const handleSave = () => {
     updateHospitalConfig(formData)
+    if (formData.title && typeof window !== 'undefined') {
+      localStorage.setItem('wacrm_profile_role', formData.title)
+    }
     // Also update active doctor state to match
     if (formData.status === 'holiday') {
       updateActiveDoctor({
@@ -87,10 +90,10 @@ export function HospitalConfigCard() {
             <Building2 className="h-5 w-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base font-bold text-foreground">Clinic Profile & Doctor Schedule</h2>
               <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
-                Dr. Mrinalini (MD)
+                {formData.doctorName || profile?.full_name || 'Dr. Mrinalini'} ({formData.title || profile?.role || 'Chief Dermatologist'})
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -182,16 +185,48 @@ export function HospitalConfigCard() {
               Hospital / Clinic
             </label>
             {isEditing ? (
-              <input
-                type="text"
-                value={formData.hospitalName}
-                onChange={e => setFormData(prev => ({ ...prev, hospitalName: e.target.value }))}
-                className="w-full text-xs font-medium bg-background border border-input rounded-md px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
+              <div className="space-y-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground font-medium">Clinic Name</label>
+                  <input
+                    type="text"
+                    value={formData.hospitalName}
+                    onChange={e => setFormData(prev => ({ ...prev, hospitalName: e.target.value }))}
+                    className="w-full text-xs font-medium bg-background border border-input rounded-md px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground font-medium">Doctor Name</label>
+                  <input
+                    type="text"
+                    value={formData.doctorName || ''}
+                    onChange={e => setFormData(prev => ({ ...prev, doctorName: e.target.value }))}
+                    placeholder="Doctor Name"
+                    className="w-full text-xs font-medium bg-background border border-input rounded-md px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground font-medium">Role / Title</label>
+                  <input
+                    type="text"
+                    value={formData.title || ''}
+                    onChange={e => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="e.g. Chief Dermatologist & Aesthetic Physician"
+                    className="w-full text-xs font-medium bg-background border border-input rounded-md px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
             ) : (
-              <p className="text-xs font-bold text-foreground truncate">{formData.hospitalName}</p>
+              <>
+                <p className="text-xs font-bold text-foreground truncate">{formData.hospitalName}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Consulting: <span className="font-semibold text-foreground">{formData.doctorName || profile?.full_name || 'Dr. Mrinalini'}</span>
+                </p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  Role: <span className="font-medium text-foreground">{formData.title || profile?.role || 'Chief Dermatologist & Aesthetic Physician'}</span>
+                </p>
+              </>
             )}
-            <p className="text-[11px] text-muted-foreground">Consulting: <span className="font-semibold text-foreground">Dr. Mrinalini</span></p>
           </div>
 
           {/* OPD Operating Hours */}

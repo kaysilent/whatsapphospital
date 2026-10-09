@@ -89,6 +89,31 @@ export const DEFAULT_DOCTORS: DoctorAvailability[] = [
   }
 ];
 
+// Global server memory state for Node.js API runtime
+let globalServerHospitalConfig: HospitalConfig = { ...DEFAULT_HOSPITAL_CONFIG };
+let globalServerDoctors: DoctorAvailability[] = [...DEFAULT_DOCTORS];
+
+export function getGlobalServerHospitalConfig(): HospitalConfig {
+  return globalServerHospitalConfig;
+}
+
+export function setGlobalServerHospitalConfig(cfg: Partial<HospitalConfig>): HospitalConfig {
+  globalServerHospitalConfig = {
+    ...globalServerHospitalConfig,
+    ...cfg,
+    updatedAt: new Date().toISOString()
+  };
+  return globalServerHospitalConfig;
+}
+
+export function getGlobalServerDoctors(): DoctorAvailability[] {
+  return globalServerDoctors;
+}
+
+export function setGlobalServerDoctors(docs: DoctorAvailability[]): void {
+  globalServerDoctors = [...docs];
+}
+
 export function getRuntimeHospitalConfig(): HospitalConfig {
   if (typeof window !== 'undefined') {
     try {
@@ -98,7 +123,80 @@ export function getRuntimeHospitalConfig(): HospitalConfig {
       }
     } catch {}
   }
-  return DEFAULT_HOSPITAL_CONFIG;
+  return globalServerHospitalConfig || DEFAULT_HOSPITAL_CONFIG;
+}
+
+/**
+ * Parses time string (e.g. "10:30 AM", "1:00 PM", "1pm", "13:30") into total minutes from midnight (0-1440).
+ */
+export function parseTimeToMinutes(timeStr?: string): number | null {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const clean = timeStr.trim().toLowerCase();
+
+  // Match 12-hour format with AM/PM (e.g. "10:30 AM", "1:00 pm", "1pm", "02:30pm")
+  const match12 = clean.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
+  if (match12) {
+    let hours = parseInt(match12[1], 10);
+    const minutes = match12[2] ? parseInt(match12[2], 10) : 0;
+    const isPm = match12[3].toLowerCase() === 'pm';
+
+    if (hours === 12) {
+      hours = isPm ? 12 : 0;
+    } else if (isPm) {
+      hours += 12;
+    }
+    return hours * 60 + minutes;
+  }
+
+  // Match 24-hour format (e.g. "13:30", "10:00")
+  const match24 = clean.match(/^(\d{1,2}):(\d{2})$/);
+  if (match24) {
+    const hours = parseInt(match24[1], 10);
+    const minutes = parseInt(match24[2], 10);
+    return hours * 60 + minutes;
+  }
+
+  // Match single digit with implicit context (e.g. "1", "2", "3", "10", "11")
+  const matchNum = clean.match(/^(\d{1,2})$/);
+  if (matchNum) {
+    let num = parseInt(matchNum[1], 10);
+    if (num >= 1 && num <= 7) num += 12; // Assume afternoon if 1-7 (1pm-7pm)
+    return num * 60;
+  }
+
+  return null;
+}
+
+/**
+ * Check if the requested time falls inside the Lunch Break window (e.g. 1:00 PM - 2:00 PM)
+ */
+export function isTimeInLunchBreak(
+  timeStr: string,
+  lunchStart: string = '01:00 PM',
+  lunchEnd: string = '02:00 PM'
+): boolean {
+  const reqMin = parseTimeToMinutes(timeStr);
+  const startMin = parseTimeToMinutes(lunchStart);
+  const endMin = parseTimeToMinutes(lunchEnd);
+
+  if (reqMin === null || startMin === null || endMin === null) return false;
+  return reqMin >= startMin && reqMin < endMin;
+}
+
+/**
+ * Check if the requested time falls outside regular clinic operating hours (e.g. before 10:00 AM or at/after 07:00 PM)
+ */
+export function isTimeOutsideWorkingHours(
+  timeStr: string,
+  openTime: string = '10:00 AM',
+  closeTime: string = '07:00 PM'
+): boolean {
+  const reqMin = parseTimeToMinutes(timeStr);
+  const openMin = parseTimeToMinutes(openTime);
+  const closeMin = parseTimeToMinutes(closeTime);
+
+  if (reqMin === null || openMin === null || closeMin === null) return false;
+  return reqMin < openMin || reqMin >= closeMin;
 }
 
 export const HOLIDAY_REASON_PRESETS = [
@@ -121,11 +219,22 @@ export const HOLIDAY_HISTORY_STORAGE_KEY = 'wacrm_doctor_holidays_history_v1';
 export function formatReadableDate(dateStr?: string): string {
   if (!dateStr) return '';
   try {
+    const clean = dateStr.split('T')[0].trim();
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const year = parts[0];
+      const monthIndex = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      if (!isNaN(monthIndex) && monthIndex >= 0 && monthIndex < 12 && !isNaN(day)) {
+        return `${months[monthIndex]} ${day}, ${year}`;
+      }
+    }
     const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00'));
     if (isNaN(d.getTime())) return dateStr;
     return d.toLocaleDateString('en-US', {
-      day: 'numeric',
       month: 'short',
+      day: 'numeric',
       year: 'numeric'
     });
   } catch {

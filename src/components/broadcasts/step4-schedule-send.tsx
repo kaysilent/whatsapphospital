@@ -16,11 +16,13 @@ import {
 } from '@/components/ui/dialog';
 import { ArrowLeft, Send, Loader2, Users, Save } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { getUnifiedPatientList, getPhoneKey } from '@/lib/contacts/patient-filter';
 
 interface AudienceConfig {
   type: string;
   tagIds?: string[];
   csvContacts?: { phone: string; name?: string }[];
+  selectedContactPhones?: string[];
 }
 
 interface Step4Props {
@@ -58,10 +60,12 @@ export function Step4ScheduleSend({
         const supabase = createClient();
 
         if (audience.type === 'all') {
-          const { count } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true });
-          setEstimatedReach(count ?? 0);
+          if (audience.selectedContactPhones !== undefined) {
+            setEstimatedReach(audience.selectedContactPhones.length);
+          } else {
+            const list = await getUnifiedPatientList();
+            setEstimatedReach(list.length);
+          }
         } else if (audience.type === 'tags' && audience.tagIds && audience.tagIds.length > 0) {
           const { data: contactTags } = await supabase
             .from('contact_tags')
@@ -75,6 +79,8 @@ export function Step4ScheduleSend({
         } else {
           setEstimatedReach(0);
         }
+      } catch {
+        setEstimatedReach(0);
       } finally {
         setLoadingReach(false);
       }

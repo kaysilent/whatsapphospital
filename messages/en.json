@@ -1273,7 +1273,7 @@
     },
     "invite": {
       "inviteCreated": "Invite created",
-      "inviteCreatedDesc": "Share this link with your new teammate. They'll be able to sign up (or sign in) and join the account as <bold>{role}</bold>. The link is valid for <bold>{days} {days, plural, =1 {day} other {days}}</bold>.",
+      "inviteCreatedDesc": "Share this link with your new teammate. They'll be able to sign up (or sign in) and join the account as <bold>{role}</bold>. The link is valid for <bold>{days} days</bold>.",
       "inviteLink": "Invite link",
       "copy": "Copy",
       "saveLinkNow": "Save this link now.",

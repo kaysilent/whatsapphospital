@@ -60,7 +60,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
     return unsubscribe;
   }, []);
 
-  const doctorName = profile?.full_name || (accountRole === "admin" ? "Hospital Admin" : accountRole === "doctor" ? "Dr. Ananya Sharma" : "Staff Member");
+  const doctorName = profile?.full_name || (accountRole === "admin" ? "Clinic Administrator" : accountRole === "doctor" ? "Doctor on Duty" : "Staff Member");
   const doctorInitials = doctorName
     .split(" ")
     .map((n) => n[0])

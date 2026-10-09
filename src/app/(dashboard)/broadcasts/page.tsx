@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Radio, Plus, Loader2 } from 'lucide-react';
+import { Radio, Plus, Loader2, RefreshCw } from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { getBroadcastStatus } from '@/lib/broadcast-status';
@@ -69,47 +69,19 @@ export default function BroadcastsPage() {
   // Used to kick off polling only while something is actively sending.
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const dummyBroadcasts: any[] = [
-    {
-      id: '1',
-      name: 'Flu Vaccine Campaign',
-      template_name: 'flu_vaccine_reminder',
-      total_recipients: 450,
-      delivered_count: 420,
-      read_count: 380,
-      status: 'sent',
-      created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-    },
-    {
-      id: '2',
-      name: 'Clinic Closure Notice',
-      template_name: 'holiday_closure',
-      total_recipients: 1200,
-      delivered_count: 1150,
-      read_count: 900,
-      status: 'sent',
-      created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
-    },
-    {
-      id: '3',
-      name: 'New Pediatrician Announcement',
-      template_name: 'new_doctor_intro',
-      total_recipients: 800,
-      delivered_count: 450,
-      read_count: 120,
-      status: 'sending',
-      created_at: new Date().toISOString(),
-      template_id: 't3',
-      sender_id: 's1',
-      started_at: new Date().toISOString(),
-      completed_at: null,
-    }
-  ];
-
   async function fetchBroadcasts() {
     try {
-      setBroadcasts(dummyBroadcasts);
+      const supabase = createClient();
+      const { data, error: fetchErr } = await supabase
+        .from('broadcasts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (fetchErr) throw fetchErr;
+      setBroadcasts(data ?? []);
+      setError(null);
     } catch (err) {
+      console.error('[broadcasts] fetch error:', err);
       setError(err instanceof Error ? err.message : t('errorLoad'));
     } finally {
       setLoading(false);
@@ -217,15 +189,27 @@ export default function BroadcastsPage() {
             {t('subtitle')}
           </p>
         </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create broadcasts"
-          onClick={() => router.push('/broadcasts/new')}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          {t('newBroadcast')}
-        </GatedButton>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchBroadcasts()}
+            disabled={loading}
+            className="border-border text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <GatedButton
+            canAct={canCreate}
+            gateReason="create broadcasts"
+            onClick={() => router.push('/broadcasts/new')}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4 mr-1.5" />
+            {t('newBroadcast')}
+          </GatedButton>
+        </div>
       </div>
 
       {broadcasts.length === 0 ? (

@@ -1,0 +1,104 @@
+{
+  "name": "La Fleur Aesthetic Clinic",
+  "tagline": " Aesthetic Clinic",
+  "leadDoctor": "Dr. Mrinalini",
+  "doctorTitle": "MD",
+  "phone": "+91 86392 95134",
+  "whatsapp": "+91 86392 95134",
+  "email": "lafleurclinicstpa@gmail.com",
+  "website": "https://lafleurwellness.com",
+  "instagram": "https://instagram.com/lafleur.clinic",
+  "mapsUrl": "https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Hyderabad",
+  "address": "Road No.11 B, Jubilee hills, 500045.",
+  "city": "Hyderabad",
+  "postalCode": "500045",
+  "emergencyContact": "+91 81478 66324",
+  "doctorWhatsapp": "+91 81478 66324",
+  "consultationFee": 500,
+  "advanceTokenFee": 10,
+  "clinicBalanceFee": 490,
+  "currency": "₹",
+  "openingHoursSummary": "Monday – Saturday: 10:00 AM – 07:00 PM (Closed on Sunday)",
+  "aboutText": "Premier center for evidence-based clinical aesthetics, advanced laser skin rejuvenation, anti-aging therapies, and personalized hair restoration under Dr. Mrinalini. Tied up with leading plastic surgeons in the city.",
+  "timings": {
+    "weekdayOpen": "10:00 AM",
+    "weekdayClose": "07:00 PM",
+    "lunchStart": "01:00 PM",
+    "lunchEnd": "02:00 PM",
+    "isSundayOpen": false,
+    "sundayOpen": "10:00 AM",
+    "sundayClose": "02:00 PM",
+    "emergencyTimingNote": "Emergency on-call available 24/7 for post-procedure patients.",
+    "weeklySchedule": [
+      {
+        "day": "Monday",
+        "isOpen": true,
+        "openTime": "10:00 AM",
+        "closeTime": "07:00 PM",
+        "hasLunchBreak": true,
+        "lunchStart": "01:00 PM",
+        "lunchEnd": "02:00 PM",
+        "notes": "Consultations & Laser"
+      },
+      {
+        "day": "Tuesday",
+        "isOpen": true,
+        "openTime": "10:00 AM",
+        "closeTime": "07:00 PM",
+        "hasLunchBreak": true,
+        "lunchStart": "01:00 PM",
+        "lunchEnd": "02:00 PM",
+        "notes": "Clinical Procedures"
+      },
+      {
+        "day": "Wednesday",
+        "isOpen": true,
+        "openTime": "10:00 AM",
+        "closeTime": "07:00 PM",
+        "hasLunchBreak": true,
+        "lunchStart": "01:00 PM",
+        "lunchEnd": "02:00 PM",
+        "notes": "Hair Restoration"
+      },
+      {
+        "day": "Thursday",
+        "isOpen": true,
+        "openTime": "10:00 AM",
+        "closeTime": "07:00 PM",
+        "hasLunchBreak": true,
+        "lunchStart": "01:00 PM",
+        "lunchEnd": "02:00 PM",
+        "notes": "Aesthetic Injectables"
+      },
+      {
+        "day": "Friday",
+        "isOpen": true,
+        "openTime": "10:00 AM",
+        "closeTime": "07:00 PM",
+        "hasLunchBreak": true,
+        "lunchStart": "01:00 PM",
+        "lunchEnd": "02:00 PM",
+        "notes": "Laser Skin Care"
+      },
+      {
+        "day": "Saturday",
+        "isOpen": true,
+        "openTime": "10:00 AM",
+        "closeTime": "06:00 PM",
+        "hasLunchBreak": true,
+        "lunchStart": "01:00 PM",
+        "lunchEnd": "02:00 PM",
+        "notes": "Full Consultations"
+      },
+      {
+        "day": "Sunday",
+        "isOpen": false,
+        "openTime": "10:00 AM",
+        "closeTime": "02:00 PM",
+        "hasLunchBreak": false,
+        "notes": "Weekly Holiday / Closed"
+      }
+    ]
+  },
+  "updatedAt": "2026-10-06T17:48:57.937Z"
+}

@@ -143,7 +143,7 @@ export default function ChatEmulator({
   const [mounted, setMounted] = useState(false);
 
   const getGreetingMessage = (): Message => {
-    const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     return {
       id: 'm-init',
       role: 'ai',
@@ -192,7 +192,7 @@ export default function ChatEmulator({
     const textToSend = (customText || inputValue).trim();
     if (!textToSend) return;
 
-    const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     const userMessage: Message = { 
       id: `u-${Date.now()}`,
       role: 'user', 
@@ -236,7 +236,7 @@ export default function ChatEmulator({
       });
 
       const data = await res.json();
-      const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
 
       if (res.ok && data.content) {
         // If LLM returned a completed appointment booking
@@ -271,7 +271,7 @@ export default function ChatEmulator({
         }]);
       }
     } catch (err: any) {
-      const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const aiTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
       setMessages(prev => [...prev, {
         id: `ai-${Date.now()}`,
         role: 'ai',
@@ -367,12 +367,25 @@ export default function ChatEmulator({
                         <span className="font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 text-[11.5px]">
                           <Calendar className="h-3.5 w-3.5" /> Confirmed Booking Pass
                         </span>
-                        <span className="rounded bg-emerald-600 text-white px-1.5 py-0.5 text-[9px] font-bold">
-                          SYNCED
-                        </span>
+                        <div className="flex items-center gap-1">
+                          {m.appointmentData.booking_id && (
+                            <span className="rounded bg-emerald-800 text-white px-1.5 py-0.5 text-[9px] font-mono font-bold">
+                              {m.appointmentData.booking_id}
+                            </span>
+                          )}
+                          <span className="rounded bg-emerald-600 text-white px-1.5 py-0.5 text-[9px] font-bold">
+                            SYNCED
+                          </span>
+                        </div>
                       </div>
                       
                       <div className="space-y-1 text-[11px]">
+                        {m.appointmentData.booking_id && (
+                          <div className="flex items-center justify-between bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                            <span className="text-muted-foreground font-medium">Booking ID:</span>
+                            <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{m.appointmentData.booking_id}</span>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Patient:</span>
                           <span className="font-semibold text-foreground">{m.appointmentData.patient_name}</span>
@@ -400,8 +413,14 @@ export default function ChatEmulator({
                       <div className="pt-2 border-t border-emerald-500/20 space-y-2">
                         {/* Dynamic WhatsApp Payment Link Box */}
                         {(() => {
+                          const userPhone = m.appointmentData?.phone_number && !m.appointmentData.phone_number.includes('9876543210')
+                            ? m.appointmentData.phone_number
+                            : '';
+                          const patientDisplayName = m.appointmentData?.patient_name && m.appointmentData.patient_name !== 'Patient'
+                            ? m.appointmentData.patient_name
+                            : 'Valued Patient';
                           const payLink = typeof window !== 'undefined'
-                            ? `${window.location.origin}/pay/pay_${m.id}?name=${encodeURIComponent(m.appointmentData?.patient_name || 'Patient')}&phone=${encodeURIComponent(m.appointmentData?.phone_number || '+919876543210')}&treatment=${encodeURIComponent(m.appointmentData?.department || 'Laser Hair Reduction')}&amount=500&date=${encodeURIComponent(m.appointmentData?.date || 'Today')}&time=${encodeURIComponent(m.appointmentData?.time || '11:30 AM')}&doctor=Dr.+Mrinalini`
+                            ? `${window.location.origin}/pay/pay_${m.id}?name=${encodeURIComponent(patientDisplayName)}&phone=${encodeURIComponent(userPhone)}&treatment=${encodeURIComponent(m.appointmentData?.department || 'Clinical Consultation')}&amount=100&date=${encodeURIComponent(m.appointmentData?.date || 'Today')}&time=${encodeURIComponent(m.appointmentData?.time || '11:30 AM')}&doctor=Dr.+Mrinalini`
                             : `/pay/pay_${m.id}`;
 
                           return (
@@ -412,7 +431,7 @@ export default function ChatEmulator({
                                     <Sparkles className="h-3 w-3" />
                                     Payment Gateway Link Generated
                                   </span>
-                                  <span className="bg-emerald-600 text-white px-1.5 py-0.2 rounded text-[9.5px]">₹500 Booking Fee</span>
+                                  <span className="bg-emerald-600 text-white px-1.5 py-0.2 rounded text-[9.5px]">₹100 Booking Fee</span>
                                 </div>
                                 <a
                                   href={payLink}
@@ -427,7 +446,7 @@ export default function ChatEmulator({
                               <div className="space-y-1 text-[10.5px]">
                                 <div className="flex items-center justify-between text-muted-foreground">
                                   <span>• Booking Fee (Razorpay/UPI):</span>
-                                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">₹500</span>
+                                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">₹100</span>
                                 </div>
                                 <div className="flex items-center justify-between text-muted-foreground">
                                   <span>• Appointment Status:</span>
@@ -451,10 +470,10 @@ export default function ChatEmulator({
                                         body: JSON.stringify({
                                           paymentId: `pay_${m.id}`,
                                           gatewayPaymentId: txnId,
-                                          patientName: m.appointmentData?.patient_name || 'Patient',
-                                          phoneNumber: m.appointmentData?.phone_number || '+91 98765 43210',
-                                          treatment: m.appointmentData?.department || 'Laser Hair Reduction',
-                                          amount: 500,
+                                          patientName: patientDisplayName,
+                                          phoneNumber: userPhone,
+                                          treatment: m.appointmentData?.department || 'Clinical Consultation',
+                                          amount: 100,
                                           date: m.appointmentData?.date || 'Scheduled Date',
                                           time: m.appointmentData?.time || '11:30 AM',
                                           doctor: 'Dr. Mrinalini',
@@ -468,7 +487,7 @@ export default function ChatEmulator({
                                       role: 'ai',
                                       content: `🎉 *Payment Received & Appointment Confirmed!*
 
-Dear ${m.appointmentData?.patient_name || 'Valued Patient'}, your booking payment of ₹500 for ${m.appointmentData?.department || 'Consultation'} with Dr. Mrinalini has been successfully received via Razorpay (Txn ID: ${txnId}).
+Dear ${m.appointmentData?.patient_name || 'Valued Patient'}, your booking payment of ₹100 for ${m.appointmentData?.department || 'Consultation'} with Dr. Mrinalini has been successfully received via Razorpay (Txn ID: ${txnId}).
 
 📅 Date: ${m.appointmentData?.date || 'Confirmed Date'}
 ⏰ Time: ${m.appointmentData?.time || '11:30 AM'}
@@ -477,11 +496,11 @@ Dear ${m.appointmentData?.patient_name || 'Valued Patient'}, your booking paymen
 💳 Payment Mode: Razorpay / UPI Instant
 
 📍 Clinic Location:
-Suite 402, Green Glen Towers, Outer Ring Road, Bangalore
-Google Maps: https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Bangalore
+Road No.11 B, Jubilee hills, Hyderabad - 500045
+Google Maps: https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Hyderabad
 
 We look forward to seeing you! Please arrive 10 minutes prior to your scheduled slot.`,
-                                      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
                                     }]);
                                   }}
                                   className={`flex-1 py-1.5 px-2 rounded-lg text-[10.5px] font-bold text-center transition-all ${
@@ -490,7 +509,7 @@ We look forward to seeing you! Please arrive 10 minutes prior to your scheduled 
                                       : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
                                   }`}
                                 >
-                                  {isPaidToken ? '✓ ₹500 Paid (Razorpay)' : '💳 Pay ₹500 (Instant)'}
+                                  {isPaidToken ? '✓ ₹100 Paid (Razorpay)' : '💳 Pay ₹100 (Instant)'}
                                 </button>
 
                                 <a
@@ -503,7 +522,7 @@ We look forward to seeing you! Please arrive 10 minutes prior to your scheduled 
                                 </a>
 
                                 <a
-                                  href="https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Bangalore"
+                                  href="https://maps.google.com/?q=La+Fleur+Aesthetic+Clinic+Hyderabad"
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="py-1.5 px-2 rounded-lg text-[10.5px] font-semibold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 hover:underline flex items-center gap-0.5"
