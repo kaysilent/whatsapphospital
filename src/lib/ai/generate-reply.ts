@@ -24,6 +24,8 @@ export interface AIRequestOptions {
     department?: string;
   }>;
   hospitalProfile?: Partial<HospitalProfile>;
+  /** Account's treatment catalog; defaults to the built-in catalog. */
+  treatments?: Treatment[];
   senderPhone?: string;
   senderName?: string;
 }
@@ -73,6 +75,7 @@ import {
   isTimeOutsideWorkingHours
 } from '@/lib/doctor/availability';
 
+import { DEFAULT_LA_FLEUR_SYSTEM_PROMPT } from '@/lib/ai/assistant-defaults';
 import {
   getRuntimeHospitalProfile,
   getRuntimeTreatments,
@@ -704,7 +707,8 @@ export function generateSmartClinicalFallback(
   history: Array<{ role: string; content: string }> = [],
   customHospitalProfile?: Partial<HospitalProfile>,
   senderPhone?: string,
-  senderName?: string
+  senderName?: string,
+  treatments?: Treatment[]
 ): {
   reply: string;
   appointmentObj: AIResponseResult['appointmentData'];
@@ -820,7 +824,7 @@ export function generateSmartClinicalFallback(
     || combinedHistoryText.match(/(\d{4}-\d{2}-\d{2}|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|\d{1,2}(?:st|nd|rd|th))/i);
 
   // Extract treatment concern
-  const activeTreatments = getRuntimeTreatments().filter(t => t.isActive);
+  const activeTreatments = (treatments ?? getRuntimeTreatments()).filter(t => t.isActive);
 
   let treatment = 'Clinical Consultation';
   let totalSittings = 1;
@@ -1481,7 +1485,7 @@ export async function syncServerHospitalProfileFromDatabase(force: boolean = fal
       if (row.currency) {
         updates.currency = (row.currency === 'INR' || row.currency === '₹') ? '₹' : row.currency;
       }
-      if (row.merchant_name) {
+      if (row.merchant_name && !updates.name) {
         updates.name = row.merchant_name;
       }
     }
@@ -1532,7 +1536,7 @@ export async function generateAIChatResponse(options: AIRequestOptions): Promise
 
   // 0. Strict Out-of-Scope / Non-Business Query Interceptor (Math, Coding, Trivia, Jokes, Weather)
   if (isOutOfScopeQuery(message, cleanHistory)) {
-    const fallback = generateSmartClinicalFallback(message, cleanHistory, activeHospitalProfile, options?.senderPhone, options?.senderName);
+    const fallback = generateSmartClinicalFallback(message, cleanHistory, activeHospitalProfile, options?.senderPhone, options?.senderName, options?.treatments);
     return {
       reply: removeEmojisAndSmileys(fallback.reply),
       isAppointmentCard: false,
@@ -1543,7 +1547,7 @@ export async function generateAIChatResponse(options: AIRequestOptions): Promise
   }
 
   if (isTestEnv) {
-    const fallback = generateSmartClinicalFallback(message, conversationHistory, activeHospitalProfile, options?.senderPhone, options?.senderName);
+    const fallback = generateSmartClinicalFallback(message, conversationHistory, activeHospitalProfile, options?.senderPhone, options?.senderName, options?.treatments);
     return {
       reply: removeEmojisAndSmileys(fallback.reply),
       isAppointmentCard: !!fallback.appointmentObj,
@@ -1623,7 +1627,7 @@ Instruction: Inform the patient that ${activeDocName} is away on holiday from ${
 
   const effectiveSystemPrompt = (systemPrompt && systemPrompt.trim())
     || (serverConfig.systemPrompt && serverConfig.systemPrompt.trim())
-    || `You are an intelligent, empathetic, highly professional WhatsApp clinic assistant for ${clinicName}.`;
+    || DEFAULT_LA_FLEUR_SYSTEM_PROMPT;
 
   let fullSystemInstruction = `${effectiveSystemPrompt}
 
@@ -1736,7 +1740,7 @@ CRITICAL CONVERSATIONAL & CLINICAL PROTOCOL GUIDELINES:
 ${calendarContext}`;
 
   // Inject Dynamic Hospital Profile & Treatment Catalog
-  const activeTreatmentsCatalog = getRuntimeTreatments();
+  const activeTreatmentsCatalog = options.treatments ?? getRuntimeTreatments();
   const hospitalCatalogText = buildHospitalKnowledgeText(activeHospitalProfile, activeTreatmentsCatalog);
   fullSystemInstruction += `\n\n${hospitalCatalogText}`;
 
@@ -1880,7 +1884,7 @@ ${calendarContext}`;
 
   // 3. Resilient stateful multi-turn fallback if external services are unreachable
   if (!rawReply) {
-    const fallback = generateSmartClinicalFallback(message, cleanHistory, activeHospitalProfile, options?.senderPhone, options?.senderName);
+    const fallback = generateSmartClinicalFallback(message, cleanHistory, activeHospitalProfile, options?.senderPhone, options?.senderName, options?.treatments);
     rawReply = fallback.reply;
     usedProvider = 'clinical-receptionist-engine';
     usedModel = 'stateful-v2';

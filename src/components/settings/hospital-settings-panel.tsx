@@ -177,6 +177,28 @@ export function HospitalSettingsPanel() {
       })
       .catch(() => {});
 
+    // The server copy is what the AI receptionist (incl. WhatsApp) reads.
+    // Edits saved only in this browser before server sync are pushed once.
+    fetch('/api/hospital/treatments')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!data || !Array.isArray(data.treatments)) return;
+        if (data.saved) {
+          setTreatments(data.treatments);
+          saveTreatments(data.treatments);
+        } else {
+          const local = getRuntimeTreatments();
+          if (JSON.stringify(local) !== JSON.stringify(DEFAULT_TREATMENTS)) {
+            fetch('/api/hospital/treatments', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ treatments: local }),
+            }).catch(() => {});
+          }
+        }
+      })
+      .catch(() => {});
+
     fetch('/api/hospital/departments')
       .then(res => res.json())
       .then(data => {

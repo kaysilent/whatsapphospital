@@ -53,6 +53,17 @@ const URGENT_KEYWORDS = [
   'speak to dr', 'connect to dr', 'human doctor', 'transfer to doctor'
 ];
 
+// Whole-word / whole-phrase matchers. Plain substring matching flagged
+// ordinary WhatsApp messages as emergencies — '108' inside a phone number or
+// booking ID, 'pus' inside 'campus' — and an emergency hit skips the AI reply.
+function keywordMatcher(kw: string): RegExp {
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`);
+}
+
+const CRITICAL_MATCHERS = CRITICAL_KEYWORDS.map((kw) => [kw, keywordMatcher(kw)] as const);
+const URGENT_MATCHERS = URGENT_KEYWORDS.map((kw) => [kw, keywordMatcher(kw)] as const);
+
 /**
  * Detects if a message constitutes an acute medical or post-procedure emergency
  */
@@ -65,14 +76,14 @@ export function detectEmergencyKeywords(text: string): EmergencyDetectionResult 
   const matchedCritical: string[] = [];
   const matchedUrgent: string[] = [];
 
-  for (const kw of CRITICAL_KEYWORDS) {
-    if (lower.includes(kw)) {
+  for (const [kw, re] of CRITICAL_MATCHERS) {
+    if (re.test(lower)) {
       matchedCritical.push(kw);
     }
   }
 
-  for (const kw of URGENT_KEYWORDS) {
-    if (lower.includes(kw) && !matchedCritical.includes(kw)) {
+  for (const [kw, re] of URGENT_MATCHERS) {
+    if (re.test(lower) && !matchedCritical.includes(kw)) {
       matchedUrgent.push(kw);
     }
   }

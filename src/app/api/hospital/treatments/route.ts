@@ -5,9 +5,17 @@ import {
 } from '@/lib/hospital/treatments';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { canEditClinicalConfig } from '@/lib/auth/roles';
+import { supabaseAdmin } from '@/lib/supabase/admin';
+import { loadTreatments, sanitizeTreatments, saveTreatments } from '@/lib/ai/knowledge-store';
 
-// Server-side in-memory cache for demo/runtime
-let runtimeTreatments: Treatment[] = [...DEFAULT_TREATMENTS];
+// The catalog is stored per account (ai_knowledge_documents) so the AI
+// receptionist — including the WhatsApp webhook, which has no browser —
+// quotes the treatments and prices configured in Settings. Writes use the
+// service-role client scoped by ctx.accountId because doctors may edit the
+// catalog, while the documents table's RLS only lets admins write.
+async function currentTreatments(accountId: string): Promise<Treatment[]> {
+  return (await loadTreatments(supabaseAdmin(), accountId)) ?? [...DEFAULT_TREATMENTS];
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,6 +23,9 @@ export async function GET(req: NextRequest) {
     const category = searchParams.get('category');
     const activeOnly = searchParams.get('activeOnly') === 'true';
 
+    const ctx = await requireRole('staff');
+    const saved = await loadTreatments(supabaseAdmin(), ctx.accountId);
+    const runtimeTreatments = saved ?? [...DEFAULT_TREATMENTS];
     let filtered = [...runtimeTreatments];
 
     if (activeOnly) {
@@ -27,12 +38,13 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      saved: !!saved,
       treatments: filtered,
       totalCount: runtimeTreatments.length,
       activeCount: runtimeTreatments.filter(t => t.isActive).length,
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  } catch (error) {
+    return toErrorResponse(error);
   }
 }
 
@@ -50,11 +62,11 @@ export async function POST(req: NextRequest) {
 
     // Check if it's a reset action
     if (body.action === 'reset') {
-      runtimeTreatments = [...DEFAULT_TREATMENTS];
+      await saveTreatments(supabaseAdmin(), ctx.accountId, DEFAULT_TREATMENTS, ctx.userId);
       return NextResponse.json({
         success: true,
         message: 'Treatments reset to default catalog successfully.',
-        treatments: runtimeTreatments,
+        treatments: DEFAULT_TREATMENTS,
       });
     }
 
@@ -81,7 +93,8 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date().toISOString(),
     };
 
-    runtimeTreatments.unshift(newTreatment);
+    const runtimeTreatments = [newTreatment, ...(await currentTreatments(ctx.accountId))];
+    await saveTreatments(supabaseAdmin(), ctx.accountId, runtimeTreatments, ctx.userId);
 
     return NextResponse.json({
       success: true,
@@ -108,11 +121,15 @@ export async function PUT(req: NextRequest) {
 
     // If batch replacement
     if (Array.isArray(body.treatments)) {
-      runtimeTreatments = body.treatments;
+      const treatments = sanitizeTreatments(body.treatments);
+      if (!treatments) {
+        return NextResponse.json({ error: 'Invalid treatments payload' }, { status: 400 });
+      }
+      await saveTreatments(supabaseAdmin(), ctx.accountId, treatments, ctx.userId);
       return NextResponse.json({
         success: true,
         message: 'Treatments updated successfully.',
-        treatments: runtimeTreatments,
+        treatments,
       });
     }
 
@@ -120,6 +137,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Treatment ID is required for update' }, { status: 400 });
     }
 
+    const runtimeTreatments = await currentTreatments(ctx.accountId);
     const index = runtimeTreatments.findIndex(t => t.id === body.id);
     if (index === -1) {
       return NextResponse.json({ error: 'Treatment not found' }, { status: 404 });
@@ -130,6 +148,7 @@ export async function PUT(req: NextRequest) {
       ...body,
       updatedAt: new Date().toISOString(),
     };
+    await saveTreatments(supabaseAdmin(), ctx.accountId, runtimeTreatments, ctx.userId);
 
     return NextResponse.json({
       success: true,
@@ -159,17 +178,19 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Treatment ID is required' }, { status: 400 });
     }
 
+    const runtimeTreatments = await currentTreatments(ctx.accountId);
     const existing = runtimeTreatments.find(t => t.id === id);
     if (!existing) {
       return NextResponse.json({ error: 'Treatment not found' }, { status: 404 });
     }
 
-    runtimeTreatments = runtimeTreatments.filter(t => t.id !== id);
+    const remaining = runtimeTreatments.filter(t => t.id !== id);
+    await saveTreatments(supabaseAdmin(), ctx.accountId, remaining, ctx.userId);
 
     return NextResponse.json({
       success: true,
       message: `Treatment "${existing.name}" removed successfully.`,
-      treatments: runtimeTreatments,
+      treatments: remaining,
     });
   } catch (error) {
     return toErrorResponse(error);

@@ -7,7 +7,8 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
-import { generateAIChatResponse, parseRequestedBookingDate } from '@/lib/ai/generate-reply'
+import { generateAIChatResponse, getClinicalCalendarInfo, parseRequestedBookingDate } from '@/lib/ai/generate-reply'
+import { formatKnowledgeContext, loadKnowledgeItems, loadTreatments } from '@/lib/ai/knowledge-store'
 import { formatProperName } from '@/lib/format-name'
 import { engineSendText } from '@/lib/automations/meta-send'
 import {
@@ -21,7 +22,7 @@ import {
   formatDoctorRelayedMessageToPatient,
   formatDoctorDeliveryConfirmation,
 } from '@/lib/whatsapp/emergency-relay'
-import { getGlobalServerHospitalProfile } from '@/lib/hospital/treatments'
+import { getGlobalServerHospitalProfile, type HospitalProfile } from '@/lib/hospital/treatments'
 import { syncAppointmentToGoogleCalendar } from '@/lib/calendar/google-calendar'
 
 // The `after()` callback in POST runs within this route's max duration.
@@ -977,7 +978,7 @@ async function processMessage(
         .select('sender_type, content_text')
         .eq('conversation_id', conversation.id)
         .order('created_at', { ascending: false })
-        .limit(6)
+        .limit(11)
 
       const rawHistory = (pastMsgs || [])
         .reverse()
@@ -994,12 +995,40 @@ async function processMessage(
           ? rawHistory.slice(0, -1)
           : rawHistory;
 
-      // Dynamically resolve latest consultation & advance booking fees from payment_configs
-      let currentHospitalProfile = getGlobalServerHospitalProfile();
+      // Give the model the same context the dashboard chat emulator sends:
+      // knowledge base, treatment catalog and already-booked slots. These
+      // used to exist only in the browser, so WhatsApp replies ran without
+      // them. Other patients' names are deliberately left out of the slots.
+      const db = supabaseAdmin()
+      const { todayStr } = getClinicalCalendarInfo()
+      const [knowledgeItems, treatments, bookedRes] = await Promise.all([
+        loadKnowledgeItems(db, accountId).catch(() => []),
+        loadTreatments(db, accountId).catch(() => null),
+        db
+          .from('appointments')
+          .select('date, time, department, sitting')
+          .eq('account_id', accountId)
+          .gte('date', todayStr)
+          .neq('status', 'Cancelled')
+          .order('date', { ascending: true })
+          .limit(200),
+      ])
+      const existingAppointments = (bookedRes.data || []) as Array<{
+        date?: string
+        time?: string
+        department?: string
+      }>
+
+      // Only the fees are overridden here. Passing the whole in-memory
+      // profile would let the stale hospital-profile.json shadow the profile
+      // saved in the database, which generateAIChatResponse loads itself.
+      let feeOverrides: Partial<HospitalProfile> = {}
+      const currentHospitalProfile = getGlobalServerHospitalProfile();
       try {
-        const { data: payRow } = await supabaseAdmin()
+        const { data: payRow } = await db
           .from('payment_configs')
           .select('default_consultation_fee, default_advance_token_fee, currency')
+          .eq('account_id', accountId)
           .order('updated_at', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -1011,12 +1040,14 @@ async function processMessage(
             ? Number(rawB)
             : currentHospitalProfile.advanceTokenFee;
 
-          currentHospitalProfile = {
-            ...currentHospitalProfile,
+          feeOverrides = {
             consultationFee: consFee,
             advanceTokenFee: advFee,
             clinicBalanceFee: Math.max(0, consFee - advFee),
-            currency: payRow.currency || currentHospitalProfile.currency || '₹',
+            // payment_configs stores the ISO code; replies show the symbol.
+            currency: !payRow.currency || payRow.currency === 'INR'
+              ? '₹'
+              : payRow.currency,
           };
         }
       } catch (err) {
@@ -1028,7 +1059,10 @@ async function processMessage(
         conversationHistory: history,
         senderPhone: senderPhone,
         senderName: contactRecord?.name || undefined,
-        hospitalProfile: currentHospitalProfile,
+        hospitalProfile: feeOverrides,
+        knowledgeContext: formatKnowledgeContext(knowledgeItems),
+        treatments: treatments ?? undefined,
+        existingAppointments,
       })
 
       if (aiResult.reply) {

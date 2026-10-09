@@ -147,7 +147,8 @@ describe('Comprehensive WhatsApp Hospital CRM Test Suite', () => {
         "Help, sudden chest pain and breathing difficulty",
         "Pus oozing and heavy bleeding from treatment site",
         "My face is swelling rapidly and it is burning",
-        "Severe allergic reaction blisters everywhere"
+        "Severe allergic reaction blisters everywhere",
+        "Should I call 108?"
       ];
 
       for (const msg of emergencySamples) {
@@ -157,7 +158,11 @@ describe('Comprehensive WhatsApp Hospital CRM Test Suite', () => {
       const nonEmergencySamples = [
         "Hi, can you tell me what time Dr. Ananya is available tomorrow?",
         "How much does hydrafacial cost?",
-        "I would like to reschedule my appointment to Friday"
+        "I would like to reschedule my appointment to Friday",
+        // Substrings of keywords inside ordinary words or numbers
+        "My number is 9108123456, please call back",
+        "Booking LF-20261108-4521 confirmed?",
+        "I am on campus till 5, can I come at 6?"
       ];
 
       for (const msg of nonEmergencySamples) {
