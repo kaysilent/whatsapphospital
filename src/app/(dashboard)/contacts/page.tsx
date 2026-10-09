@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { isHiddenByDeletion } from '@/lib/contacts/deleted-patients';
 import { useRouter } from 'next/navigation';
 import { useDemoState, Appointment, getTreatmentProtocol } from '@/hooks/use-demo-state';
 import { useAuth } from '@/hooks/use-auth';
@@ -181,18 +182,14 @@ export default function ContactsPage() {
   const initialDemoPatients: PatientRecord[] = [];
 
   // Check if a patient record has been deleted or contains dummy placeholders
-  const isDeleted = (phone?: string, id?: string, name?: string) => {
+  const isDeleted = (phone?: string, id?: string, name?: string, createdAt?: string) => {
     const cleanP = (phone || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
     const cleanId = (id || '').toLowerCase();
     const cleanName = (name || '').toLowerCase();
     if (cleanP.includes('9876543210') || cleanP.includes('9812345678') || cleanId === '1' || cleanId === '2') return true;
     if (cleanP.includes('{{') || cleanP.includes('whatsapp_number') || cleanP.includes('dummy') || cleanP.length < 8) return true;
     if (cleanName.includes('priya sharma') || cleanName.includes('rohan mehra')) return true;
-    if (!deletedPatientPhones || deletedPatientPhones.length === 0) return false;
-    return deletedPatientPhones.some(d => {
-      const cleanD = (d || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
-      return cleanD === cleanP || cleanD === cleanId || d === phone || d === id;
-    });
+    return isHiddenByDeletion(deletedPatientPhones || [], phone, id, createdAt);
   };
 
   const getPhoneKey = (phone?: string) => {
@@ -224,7 +221,7 @@ export default function ContactsPage() {
   // 1. Dynamic appointments (from Supabase & AI WhatsApp booking)
   appointments.forEach(appt => {
     const phoneKey = getPhoneKey(appt.phone_number);
-    if (!isDeleted(appt.phone_number, appt.id, appt.patient_name) && phoneKey && !seenPhones.has(phoneKey)) {
+    if (!isDeleted(appt.phone_number, appt.id, appt.patient_name, appt.created_at) && phoneKey && !seenPhones.has(phoneKey)) {
       seenPhones.add(phoneKey);
       let resolvedName = appt.patient_name;
       if (!resolvedName || resolvedName.toLowerCase() === 'patient' || resolvedName.toLowerCase() === 'valued patient') {
@@ -256,7 +253,7 @@ export default function ContactsPage() {
     const pPhone = c.phone || '';
     const phoneKey = getPhoneKey(pPhone);
 
-    if (!isDeleted(pPhone, c.id, c.name) && phoneKey && !seenPhones.has(phoneKey)) {
+    if (!isDeleted(pPhone, c.id, c.name, c.created_at) && phoneKey && !seenPhones.has(phoneKey)) {
       seenPhones.add(phoneKey);
       let resolvedName = c.name;
       if (!resolvedName || resolvedName.toLowerCase() === 'patient' || resolvedName.toLowerCase() === 'valued patient' || resolvedName === 'WhatsApp Patient') {

@@ -1,3 +1,5 @@
+import { isHiddenByDeletion } from '@/lib/contacts/deleted-patients';
+
 /**
  * Canonical Patient Filtering & Deduplication Utility
  * Ensures Patient Registry, Broadcast Audience Selection, and Campaign Dispatch
@@ -26,7 +28,8 @@ export function isDeletedPatient(
   phone?: string,
   id?: string,
   name?: string,
-  extraDeletedList?: string[]
+  extraDeletedList?: string[],
+  createdAt?: string
 ): boolean {
   const cleanP = (phone || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
   const cleanId = (id || '').toLowerCase();
@@ -54,12 +57,8 @@ export function isDeletedPatient(
   }
 
   // Check extra deleted list passed in
-  if (extraDeletedList && extraDeletedList.length > 0) {
-    const isMatch = extraDeletedList.some((d) => {
-      const cleanD = (d || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
-      return cleanD === cleanP || cleanD === cleanId || d === phone || d === id;
-    });
-    if (isMatch) return true;
+  if (extraDeletedList && isHiddenByDeletion(extraDeletedList, phone, id, createdAt)) {
+    return true;
   }
 
   // Check localStorage for deleted patients in browser environment
@@ -69,10 +68,7 @@ export function isDeletedPatient(
       if (stored) {
         const deletedList: string[] = JSON.parse(stored);
         if (Array.isArray(deletedList) && deletedList.length > 0) {
-          return deletedList.some((d) => {
-            const cleanD = (d || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
-            return cleanD === cleanP || cleanD === cleanId || d === phone || d === id;
-          });
+          return isHiddenByDeletion(deletedList, phone, id, createdAt);
         }
       }
     } catch {}
@@ -134,7 +130,7 @@ export async function getUnifiedPatientList(extraDeletedList?: string[]): Promis
     const phoneKey = getPhoneKey(rawPhone);
     if (!phoneKey || !cleanP) return;
 
-    if (isDeletedPatient(rawPhone, extra?.id, rawName, extraDeletedList)) {
+    if (isDeletedPatient(rawPhone, extra?.id, rawName, extraDeletedList, extra?.created_at)) {
       return;
     }
 

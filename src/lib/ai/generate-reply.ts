@@ -260,91 +260,100 @@ export function getClinicalCalendarInfo(baseDate: Date = new Date()) {
   };
 }
 
+/** Shift a YYYY-MM-DD calendar date by whole days (timezone independent). */
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** YYYY-MM-DD for a calendar date, or null if it doesn't exist (e.g. 31 Feb). */
+function isoFromParts(year: number, monthIdx: number, day: number): string | null {
+  const d = new Date(Date.UTC(year, monthIdx, day));
+  if (d.getUTCMonth() !== monthIdx || d.getUTCDate() !== day) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+const MONTHS: Array<[string, number]> = [
+  ['jan(?:uary)?', 0], ['feb(?:ruary)?', 1], ['mar(?:ch)?', 2], ['apr(?:il)?', 3],
+  ['may', 4], ['june?', 5], ['july?', 6], ['aug(?:ust)?', 7],
+  ['sep(?:t(?:ember)?)?', 8], ['oct(?:ober)?', 9], ['nov(?:ember)?', 10], ['dec(?:ember)?', 11],
+];
+
+const WEEKDAYS: Array<[RegExp, number]> = [
+  [/\bsun(?:day)?\b/, 0], [/\bmon(?:day)?\b/, 1], [/\btue(?:s|sday)?\b/, 2], [/\bwed(?:nesday)?\b/, 3],
+  [/\bthu(?:r|rs|rsday)?\b/, 4], [/\bfri(?:day)?\b/, 5], [/\bsat(?:urday)?\b/, 6],
+];
+
 /**
- * Intelligent date parser for user date inputs
+ * Resolve a patient- or model-supplied date to a YYYY-MM-DD booking date.
+ *
+ * Works purely on calendar dates relative to `todayStr` (the clinic's IST
+ * date), so it gives the same answer whatever timezone the server runs in.
+ * Numeric dates are read day-first (10/11/2026 = 10 November), as written in
+ * India. Dates without a year that have already passed roll to next year.
  */
-export function parseRequestedBookingDate(dateInput: string | undefined, todayStr: string, tomorrowStr: string, today: Date): string {
+export function parseRequestedBookingDate(dateInput: string | undefined, todayStr: string, tomorrowStr: string): string {
   if (!dateInput) return tomorrowStr;
   const lower = dateInput.toLowerCase().trim();
-  if (lower === 'today') return todayStr;
-  if (lower === 'tomorrow') return tomorrowStr;
+  if (/^today\b/.test(lower)) return todayStr;
+  if (/^tomorrow\b/.test(lower)) return tomorrowStr;
 
-  // Strict YYYY-MM-DD match anywhere in the string
-  const isoMatch = lower.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  const [todayY, todayM] = todayStr.split('-').map(Number);
+  const futureOrNextYear = (monthIdx: number, day: number, year?: number): string | null => {
+    const iso = isoFromParts(year ?? todayY, monthIdx, day);
+    if (!iso) return null;
+    if (year === undefined && iso < todayStr) return isoFromParts(todayY + 1, monthIdx, day);
+    return iso < todayStr ? todayStr : iso;
+  };
+
+  // 1. ISO YYYY-MM-DD anywhere in the string
+  const isoMatch = lower.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
   if (isoMatch) {
-    const candidate = isoMatch[1];
-    if (candidate >= todayStr) return candidate;
-    return todayStr; // Past date clamped to today
+    const iso = isoFromParts(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+    if (iso) return iso >= todayStr ? iso : todayStr;
   }
 
-  // Check day of week names
-  const daysMap: Record<string, number> = {
-    'sunday': 0, 'sun': 0,
-    'monday': 1, 'mon': 1,
-    'tuesday': 2, 'tue': 2,
-    'wednesday': 3, 'wed': 3,
-    'thursday': 4, 'thu': 4,
-    'friday': 5, 'fri': 5,
-    'saturday': 6, 'sat': 6,
-  };
-
-  for (const [dayName, dayIndex] of Object.entries(daysMap)) {
-    if (lower.includes(dayName)) {
-      const currentDayIndex = today.getDay();
-      let diff = dayIndex - currentDayIndex;
-      if (diff <= 0) diff += 7; // next occurrence
-      const targetDate = new Date(today.getTime() + diff * 86400000);
-      return targetDate.toISOString().split('T')[0];
-    }
+  // 2. Numeric day-first dates: 10/11/2026, 10-11-26, 10.11
+  const numMatch = lower.match(/\b(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?\b(?!\s*(?:am|pm)\b)/);
+  if (numMatch) {
+    let day = Number(numMatch[1]);
+    let month = Number(numMatch[2]);
+    if (month > 12 && day <= 12) [day, month] = [month, day]; // unambiguous month-first
+    const year = numMatch[3] ? (numMatch[3].length === 2 ? 2000 + Number(numMatch[3]) : Number(numMatch[3])) : undefined;
+    const iso = month >= 1 && month <= 12 ? futureOrNextYear(month - 1, day, year) : null;
+    if (iso) return iso;
   }
 
-  // Natural language / standard date string parse (e.g. "October 7, 2026", "7 Oct 2026")
-  try {
-    const cleanDateText = dateInput.replace(/^[a-z]+,\s*/i, '').replace(/\s*\(.*?\)/g, '').trim();
-    const parsed = new Date(cleanDateText);
-    if (!isNaN(parsed.getTime()) && parsed.getFullYear() >= 2024 && parsed.getFullYear() <= 2035) {
-      const iso = parsed.toISOString().split('T')[0];
-      if (iso >= todayStr) return iso;
-      return todayStr;
-    }
-  } catch {}
-
-  // Month names matching e.g. "Oct 7", "7 October", "October 7th"
-  const monthMap: Record<string, number> = {
-    jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
-    may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7, sep: 8, september: 8,
-    oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11
-  };
-  for (const [mName, mIdx] of Object.entries(monthMap)) {
-    if (lower.includes(mName)) {
-      const dayM = lower.match(/(\d{1,2})(?:st|nd|rd|th)?/);
-      if (dayM) {
-        const dNum = parseInt(dayM[1], 10);
-        if (dNum >= 1 && dNum <= 31) {
-          const yearMatch = lower.match(/\b(202\d)\b/);
-          const yNum = yearMatch ? parseInt(yearMatch[1], 10) : today.getFullYear();
-          const target = new Date(yNum, mIdx, dNum);
-          return target.toISOString().split('T')[0];
-        }
-      }
+  // 3. Month name next to a day: "15 October", "Oct 15th", "Thursday, 15 October 2026"
+  for (const [month, monthIdx] of MONTHS) {
+    const m = lower.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+of)?\\s+${month}\\b|\\b${month}\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`));
+    if (m) {
+      const yearMatch = lower.match(/\b(20\d{2})\b/);
+      const iso = futureOrNextYear(monthIdx, Number(m[1] ?? m[2]), yearMatch ? Number(yearMatch[1]) : undefined);
+      if (iso) return iso;
     }
   }
 
-  // Ordinal day "24th", "25", "4th"
-  const dayMatch = lower.match(/(\d{1,2})(?:st|nd|rd|th)?/);
-  if (dayMatch) {
-    const dayNum = parseInt(dayMatch[1], 10);
-    if (dayNum >= 1 && dayNum <= 31) {
-      const currYear = today.getFullYear();
-      const currMonth = today.getMonth();
-      let target = new Date(currYear, currMonth, dayNum);
-      const targetStr = target.toISOString().split('T')[0];
-      if (targetStr < todayStr) {
-        // Roll to next month if day is in past
-        target = new Date(currYear, currMonth + 1, dayNum);
-      }
-      return target.toISOString().split('T')[0];
+  // 4. Weekday name: the next occurrence after today
+  const weekdayHit = WEEKDAYS.find(([re]) => re.test(lower));
+  if (weekdayHit) {
+    const todayDow = new Date(`${todayStr}T00:00:00Z`).getUTCDay();
+    let diff = weekdayHit[1] - todayDow;
+    if (diff <= 0) diff += 7;
+    return addDaysIso(todayStr, diff);
+  }
+
+  // 5. Day of month only: "15th", "the 5th", "15" — this month, or next if passed
+  const dayOnly = lower.match(/^(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?$/) || lower.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/);
+  if (dayOnly) {
+    const day = Number(dayOnly[1]);
+    let iso = isoFromParts(todayY, todayM - 1, day);
+    if (!iso || iso < todayStr) {
+      const next = todayM === 12 ? [todayY + 1, 0] : [todayY, todayM];
+      iso = isoFromParts(next[0], next[1], day);
     }
+    if (iso) return iso;
   }
 
   return tomorrowStr;
@@ -448,10 +457,8 @@ export function cleanAIOutputReplies(
   }
 
   // Extract patient details to form the direct in-chat payment link ONLY if it's an actual confirmed appointment summary
-  const isAppointmentSummary = (
-    /(?:here is your (?:complete )?appointment summary|appointment confirmed|consultation confirmed|booking details:)/i.test(text) ||
-    (!!appointmentData && /booking fee:/i.test(text))
-  ) && !/(?:once I have|will generate|please provide the following|to proceed with your registration|could you please let me know)/i.test(text);
+  const isAppointmentSummary = (!!appointmentData || looksLikeBookingConfirmation(text))
+    && !/(?:once I have|will generate|please provide the following|to proceed with your registration|could you please let me know)/i.test(text);
 
   if (isAppointmentSummary) {
     let pName = appointmentData?.patient_name || '';
@@ -524,7 +531,11 @@ export function cleanAIOutputReplies(
     }
 
     const cleanPhone = pPhone.replace(/[\s\-\(\)]/g, '');
-    const payUrl = `${siteUrl}/pay/pay_${Date.now()}?name=${encodeURIComponent(pName || 'Valued Patient')}&phone=${encodeURIComponent(cleanPhone)}&treatment=${encodeURIComponent(pDept)}&amount=${bookingFee}&date=${encodeURIComponent(pDate)}&time=${encodeURIComponent(pTime)}&clinicWa=918639295134`;
+    const payUrl = `${siteUrl}/pay/pay_${Date.now()}?name=${encodeURIComponent(pName || 'Valued Patient')}&phone=${encodeURIComponent(cleanPhone)}&treatment=${encodeURIComponent(pDept)}&amount=${bookingFee}&date=${encodeURIComponent(pDate)}&time=${encodeURIComponent(pTime)}&clinicWa=${clinicWaDigits(hospitalProfile)}`;
+
+    // The model is told not to write payment links, but if it does (often with
+    // [Name]-style placeholders) swap in the real one.
+    text = text.replace(/https?:\/\/[^\s\/]+\/pay\/[^\s\r\n]*/gi, payUrl);
 
     // Rewrite any "sent to your email" / "invoice sent to your email" hallucination into in-chat payment link
     if (/sent to your email|sent to email|invoice and secure payment link.*email/i.test(text)) {
@@ -696,6 +707,61 @@ export function isOutOfScopeQuery(
   }
 
   return false;
+}
+
+/**
+ * True only for an actual booking confirmation: a confirmation phrase plus the
+ * structured Patient Name / Date / Time lines of a summary. Phrases alone
+ * ("share your booking details", "consultation details") are not enough —
+ * they used to create appointments from ordinary treatment answers.
+ */
+export function looksLikeBookingConfirmation(rawText: string): boolean {
+  const text = rawText.replace(/[*_]/g, '');
+  const hasPhrase = /appointment confirmed|consultation confirmed|booking confirmed|your (?:appointment|booking|consultation) is confirmed|appointment booked|consultation booked|slot confirmed|appointment scheduled|consultation scheduled|(?:appointment|booking) summary/i.test(text);
+  const hasFields = /Patient(?:\s+Name)?:\s*\S/i.test(text) && /Date:\s*\S/i.test(text) && /Time(?:\s+Slot)?:\s*\S/i.test(text);
+  return hasPhrase && hasFields;
+}
+
+/**
+ * Convert the Markdown LLMs tend to emit into WhatsApp formatting. The
+ * dashboard emulator renders Markdown, so replies looked clean there while
+ * WhatsApp showed raw `**`, `##` and `[text](url)`.
+ */
+export function toWhatsAppFormatting(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+(.+?)\s*#*\s*$/gm, '*$1*')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '*$1*')
+    .replace(/\*\*(.+?)\*\*/g, '*$1*')
+    .replace(/__(.+?)__/g, '_$1_')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2')
+    .replace(/^(\s*)[-*+]\s+/gm, '$1• ');
+}
+
+const TREATMENT_KEYWORDS: Record<string, string[]> = {
+  'Laser Hair Reduction': ['laser hair', 'hair removal', 'hair reduction', 'lhr', 'unwanted hair'],
+  'Carbon Laser Hollywood Peel': ['carbon', 'hollywood'],
+  'PRP Hair Therapy & Scalp Restoration': ['prp', 'hair fall', 'hair loss', 'hair thinning', 'thinning', 'balding', 'scalp'],
+  'GFC Hair Restoration': ['gfc'],
+  'HydraFacial Deluxe': ['hydrafacial', 'hydra facial', 'hydra', 'facial', 'glow'],
+  'Pigmentation & Chemical Peels': ['chemical peel', 'peel', 'peels', 'pigmentation', 'pigment', 'melasma', 'tan', 'dark spots', 'brightening'],
+  'Skin Tightening (RF / MNRF)': ['acne scar', 'acne scars', 'scar', 'scars', 'mnrf', 'tightening', 'open pores', 'pores', 'acne'],
+  'Anti-Aging & Botox': ['botox', 'wrinkle', 'wrinkles', 'anti-aging', 'anti aging', 'fine lines'],
+  'Dermal Fillers & Lip Enhancement': ['filler', 'fillers', 'lip', 'lips'],
+  'Body Contouring & Cellulite Reduction': ['cellulite', 'contouring', 'body fat'],
+};
+
+/** Catalog treatments the message refers to, by name or common keyword. */
+export function findMentionedTreatments(lowerMsg: string, catalog: Treatment[]): Treatment[] {
+  return catalog.filter(t => {
+    if (t.name === 'Clinical Consultation') return false;
+    const keywords = [t.name.toLowerCase(), ...(TREATMENT_KEYWORDS[t.name] || [])];
+    return keywords.some(k => new RegExp(`(?<![a-z])${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z])`).test(lowerMsg));
+  });
+}
+
+/** Digits of the clinic's WhatsApp number, for the pay page's "chat with us" link. */
+export function clinicWaDigits(profile?: Partial<HospitalProfile>): string {
+  return (profile?.whatsapp || profile?.phone || '').replace(/\D/g, '');
 }
 
 /**
@@ -978,6 +1044,40 @@ export function generateSmartClinicalFallback(
     return { reply, appointmentObj: null };
   }
 
+  // Booking flow state: only continue an intake the assistant actually started.
+  const lastAssistantText = [...cleanHistory].reverse()
+    .find(h => h.role === 'ai' || h.role === 'assistant' || h.role === 'model' || h.role === 'bot')?.content || '';
+  const bookingInProgress = /which slot works best|available slots|full name|confirm (?:this|your) booking|phone number|email address|reserve/i.test(lastAssistantText);
+  const isExplicitBookingRequest = /\b(?:book|booking|appointment|schedule|slot|reserve)\b/.test(lower);
+
+  // Treatment advice / comparison questions ("what do you suggest for acne
+  // scars?", "is laser painful?"): answer the question first and only offer
+  // a booking at the end, instead of jumping straight into slot selection.
+  const isPricingWords = /\b(?:price|prices|cost|costs|package|charges?|rates?|fees?)\b|how much/.test(lower);
+  const isAdviceQuestion = !isExplicitBookingRequest && !isPricingWords && !directTimeMatch &&
+    (lower.includes('?') || /\b(?:suggest|recommend|advice|advise|which|better|best|difference|versus|vs|what|how|why|does|do i|is it|painful|pain|safe|side effects?|results?|downtime|recovery|good for|help)\b/.test(lower));
+  if (isAdviceQuestion) {
+    const mentioned = findMentionedTreatments(lower, activeTreatments);
+    const fromHistory = activeTreatments.find(t => t.name === treatment);
+    const toDescribe = mentioned.length > 0 ? mentioned.slice(0, 3) : (fromHistory && treatment !== 'Clinical Consultation' ? [fromHistory] : []);
+    if (toDescribe.length > 0) {
+      const sections = toDescribe.map(t => {
+        const lines = [`*${t.name}*`];
+        if (t.description) lines.push(`• ${t.description}`);
+        if (t.recommendedSittings) {
+          lines.push(`• Typical plan: ${t.recommendedSittings} sitting${t.recommendedSittings > 1 ? 's' : ''}${t.recommendedSittings > 1 && t.sittingInterval ? `, ${t.sittingInterval} apart` : ''}${t.durationMinutes ? ` (about ${t.durationMinutes} minutes each)` : ''}`);
+        }
+        if (t.postCareAdvice) lines.push(`• Aftercare: ${t.postCareAdvice}`);
+        return lines.join('\n');
+      });
+      const closing = toDescribe.length > 1
+        ? `The right option depends on your skin type and concern, and ${doctorName} will recommend the best plan after examining you.`
+        : `${doctorName} will confirm whether this suits you and personalise the plan after an in-person assessment.`;
+      const reply = `${sections.join('\n\n')}\n\n${closing}\n\nWould you like me to book a consultation with ${doctorName}?`;
+      return { reply, appointmentObj: null };
+    }
+  }
+
   const hasBookingOrTime = lower.includes('book') || lower.includes('appointment') || lower.includes('schedule') || lower.includes('slot') || lower.includes('reserve') || !!activeTime || /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(userMsg);
 
   if (!hasBookingOrTime && (lower.includes('doctor') || lower.includes('timings') || lower.includes('timing') || lower.includes('open') || lower.includes('hours') || lower.includes('location') || lower.includes('address') || lower.includes('where'))) {
@@ -1093,7 +1193,7 @@ export function generateSmartClinicalFallback(
   const patientName = resolvedPatientName;
 
   // Calculate target date
-  const finalDate = parseRequestedBookingDate(dateMatch ? dateMatch[1] : undefined, calInfo.todayStr, calInfo.tomorrowStr, calInfo.today);
+  const finalDate = parseRequestedBookingDate(dateMatch ? dateMatch[1] : undefined, calInfo.todayStr, calInfo.tomorrowStr);
   const targetDateObj = new Date(finalDate);
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const formattedDay = dayNames[targetDateObj.getDay()];
@@ -1151,7 +1251,10 @@ export function generateSmartClinicalFallback(
   // ============================================================
   const hasRealTreatment = treatment && treatment !== 'Clinical Consultation';
   const hasTime = !!activeTime;
-  const hasName = !!patientName && patientName.length >= 2 && patientName.toLowerCase() !== 'patient';
+  // The WhatsApp profile name only counts once the assistant has asked for it.
+  const nameFromChat = !!extractedName || (bookingInProgress && /full name/i.test(lastAssistantText));
+  const hasName = nameFromChat && !!patientName && patientName.length >= 2 && patientName.toLowerCase() !== 'patient';
+  const inBookingFlow = bookingInProgress || isExplicitBookingRequest;
   const hasPhone = !!(phoneMatch && phoneMatch[0]);
   const hasEmail = !!(emailMatch && emailMatch[0]);
   const isBookingIntent = lower.includes('book') || lower.includes('appointment') || lower.includes('schedule') || lower.includes('slot') || lower.includes('timings') || lower.includes('timing') || lower.includes('time') || lower.includes('tomorrow') || lower.includes('today');
@@ -1191,7 +1294,7 @@ export function generateSmartClinicalFallback(
 
   // STEP 4: Full Patient Intake Complete (Treatment, Slot/Time, Name)
   // Patient is already on WhatsApp, so phone number and email are not requested unless conversation history explicitly asked for them
-  if (hasTime && hasName) {
+  if (hasTime && hasName && inBookingFlow) {
     const historyAskedForPhone = (allChatTexts.includes('phone number') || allChatTexts.includes('contact number')) && !allChatTexts.includes('appointment confirmed') && !allChatTexts.includes('consultation confirmed');
     if (historyAskedForPhone && !hasPhone) {
       const reply = `Thank you, ${patientName}!\n\nPlease provide your WhatsApp Contact Phone Number and Email Address to complete your booking.`;
@@ -1234,7 +1337,7 @@ export function generateSmartClinicalFallback(
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://blue-monkey-950817.hostingersite.com';
     const cleanPhone = finalPhone.replace(/[\s\-\(\)]/g, '');
-    const payUrl = `${siteUrl}/pay/pay_${Date.now()}?name=${encodeURIComponent(appointmentObj.patient_name || 'Valued Patient')}&phone=${encodeURIComponent(cleanPhone)}&treatment=${encodeURIComponent(appointmentObj.department)}&amount=${advanceBookingFee}&date=${encodeURIComponent(appointmentObj.date)}&time=${encodeURIComponent(appointmentObj.time)}&clinicWa=918639295134`;
+    const payUrl = `${siteUrl}/pay/pay_${Date.now()}?name=${encodeURIComponent(appointmentObj.patient_name || 'Valued Patient')}&phone=${encodeURIComponent(cleanPhone)}&treatment=${encodeURIComponent(appointmentObj.department)}&amount=${advanceBookingFee}&date=${encodeURIComponent(appointmentObj.date)}&time=${encodeURIComponent(appointmentObj.time)}&clinicWa=${clinicWaDigits(hospitalProfile)}`;
 
     const feeBreakdown = balanceFee > 0
       ? `• Doctor Consultation Fee: ${clinicCurrency}${consultationFee}\n• Advance Booking Fee: ${clinicCurrency}${advanceBookingFee} (to lock your appointment slot)\n• Balance at Clinic: ${clinicCurrency}${balanceFee} (payable at clinic desk)`
@@ -1245,9 +1348,10 @@ export function generateSmartClinicalFallback(
     return { reply, appointmentObj };
   }
 
-  // STEP 3: Slot selected (or number 1-5 chosen), but missing Name
-  if (hasTime) {
-    const reply = `Great! I have reserved *${activeTime} on ${formattedDay}, ${finalDate}* for your ${treatment} consultation.\n\nMay I please have your *Full Name* to confirm your booking?`;
+  // STEP 3: Slot selected (or number 1-5 chosen), but missing Name.
+  // Nothing is reserved until the booking is confirmed, so don't claim it is.
+  if (hasTime && inBookingFlow) {
+    const reply = `Great choice: *${activeTime} on ${formattedDay}, ${finalDate}* for your ${treatment} consultation.\n\nMay I please have your *Full Name* to confirm this booking?`;
     return { reply, appointmentObj: null };
   }
 
@@ -1682,8 +1786,7 @@ CRITICAL CONVERSATIONAL & CLINICAL PROTOCOL GUIDELINES:
        "The doctor consultation fee is ${clinicCurrency}${consultationFee}. An advance booking fee of ${clinicCurrency}${bookingFee} is payable online to reserve your slot, and the balance of ${clinicCurrency}${balanceFee} is payable at the clinic upon arrival."
    - PAYMENT LINK TIMING RULE: ONLY include the payment link in the final appointment confirmation summary after the patient has provided their Full Name and slot.
    - NEVER include a payment link when asking intake questions or before the patient's name is known!
-   - DIRECT IN-CHAT PAYMENT LINK FORMAT (ALWAYS with amount=${bookingFee}):
-     ${process.env.NEXT_PUBLIC_SITE_URL || 'https://blue-monkey-950817.hostingersite.com'}/pay/pay_online?name={PatientName}&treatment={Treatment}&amount=${bookingFee}&date={Date}&time={Time}&clinicWa=918639295134
+   - NEVER write a payment link or URL yourself. The system appends the patient's secure payment link to the confirmation summary automatically.
 5. CLINIC LOCATION & GOOGLE MAPS LINK:
    - Provide clinic Google Maps link: ${clinicMaps} (Address: ${clinicAddress}).
 6. REAL-TIME CALENDAR & STRICT CLINIC CLOCK (ASIA/KOLKATA / IST):
@@ -1694,12 +1797,14 @@ CRITICAL CONVERSATIONAL & CLINICAL PROTOCOL GUIDELINES:
 7. STREAMLINED WHATSAPP INTAKE PROTOCOL (NO PHONE OR EMAIL REQUESTS):
    - WHATSAPP NUMBER & EMAIL RULE: The patient is ALREADY chatting directly with us on WhatsApp. We ALREADY have their WhatsApp contact number, and an email address is NOT required.
    - NEVER ask the patient for their WhatsApp contact number or email address! Do not request phone number or email at any point.
+   - ONLY start this intake when the patient asks to book or accepts your offer to book. If they are asking about a treatment, follow rule 8 first.
    - ONLY collect these 3 pieces of information:
      • Step 1: Clinical Concern & Treatment (If not already mentioned, ask in 1 short sentence what concern they wish to address).
      • Step 2: Date & Slot Selection (Offer numbered slots: 1. 10:30 AM, 2. 11:30 AM, 3. 02:30 PM, 4. 04:00 PM, 5. 05:30 PM. Remember: If today's clinic is closed or after 5:30 PM IST, only offer tomorrow ${calInfo.tomorrowFormatted} or later).
      • Step 3: Patient Name:
        - As soon as the patient chooses a slot, acknowledge the slot in 1 short sentence and ask ONLY for their Full Name:
-         "Thank you! I have reserved [Time] on [Day, Date] for your consultation. May I please have your Full Name to confirm your appointment?"
+         "Great choice: [Time] on [Day, Date]. May I please have your Full Name to confirm this booking?"
+       - NEVER say a slot is reserved, held or booked before the confirmation summary in Step 4.
      • Step 4: Appointment Confirmation & Direct In-Chat Payment Link:
        - Once Treatment, Slot/Date, and Full Name are provided, IMMEDIATELY confirm the booking and present the short summary:
          Appointment Confirmed!
@@ -1715,13 +1820,14 @@ CRITICAL CONVERSATIONAL & CLINICAL PROTOCOL GUIDELINES:
          Clinic Address: ${clinicAddress}
          Google Maps: ${clinicMaps}
 
-         Please complete the ${clinicCurrency}${bookingFee} advance booking fee using the secure payment link below to confirm your slot:
-         👉 *Pay Online*: ${process.env.NEXT_PUBLIC_SITE_URL || 'https://blue-monkey-950817.hostingersite.com'}/pay/pay_online?name=[Name]&treatment=[Treatment]&amount=${bookingFee}&date=[Date]&time=[Time]&clinicWa=918639295134
+         Please complete the ${clinicCurrency}${bookingFee} advance booking fee using the secure payment link below to confirm your slot.
 
          We look forward to seeing you!
        - Append the invisible <!--BOOKING_JSON:...--> tag at the VERY END.
-8. SYMPTOM SHARING VS BOOKING:
-   - If a patient describes symptoms or previous treatment history (e.g. hair thinning, using Mintop, acne scars), acknowledge their clinical history briefly, explain the treatment protocol, and offer consultation timings.
+8. ANSWER FIRST, OFFER BOOKING AT THE END:
+   - If a patient asks for a treatment suggestion, compares treatments, asks how a treatment works, about pain, safety, results, downtime or aftercare, or describes symptoms or treatment history (e.g. hair thinning, using Mintop, acne scars): ANSWER THE QUESTION FIRST with helpful, specific information from the treatment catalog and knowledge base.
+   - Then END with ONE short question offering a consultation, e.g. "Would you like me to book a consultation with ${activeDocName}?"
+   - Do NOT list time slots, ask for their name, or say you will book anything until the patient says they want to book.
 9. Multi-Sitting Treatment Tracking & Intervals:
    - When explaining treatments or booking courses, state approved sittings and intervals (e.g., Laser Hair Reduction: 6 sessions spaced 4-6 weeks apart; PRP Hair Restoration: 4 sessions spaced 3-4 weeks apart; Chemical Peels: 4 sessions spaced 2-3 weeks apart; RF Skin Tightening: 4 sessions spaced 3-4 weeks apart).
    - Inform patients that after each completed sitting, automated follow-ups and next-sitting due reminders will be sent via WhatsApp.
@@ -1734,8 +1840,8 @@ CRITICAL CONVERSATIONAL & CLINICAL PROTOCOL GUIDELINES:
      • Invite them to book an in-person consultation slot.
 11. WhatsApp Formatting: Use *bold* for highlights and • for bullet points. Do not use Markdown header hashtags like '#' or multiple asterisks '***'.
 12. Final Booking Pass Tag:
-   - Only upon completing intake (Treatment, Slot, Full Name), append:
-<!--BOOKING_JSON:{"patient_name":"...","phone_number":"${(options?.senderPhone && !isDummyPhoneNumber(options.senderPhone)) ? options.senderPhone : ''}","date":"${calInfo.tomorrowStr}","time":"...","department":"...","doctor":"${activeDocName}","current_sitting":1,"total_sittings":1,"sitting_interval":"As advised","sitting_interval_days":28}-->
+   - Only upon completing intake (Treatment, Slot, Full Name), append the tag below. "date" MUST be the YYYY-MM-DD date of the slot the patient chose (today is ${calInfo.todayStr}, tomorrow is ${calInfo.tomorrowStr}) and "time" the chosen slot:
+<!--BOOKING_JSON:{"patient_name":"...","phone_number":"${(options?.senderPhone && !isDummyPhoneNumber(options.senderPhone)) ? options.senderPhone : ''}","date":"YYYY-MM-DD","time":"...","department":"...","doctor":"${activeDocName}","current_sitting":1,"total_sittings":1,"sitting_interval":"As advised","sitting_interval_days":28}-->
 
 ${calendarContext}`;
 
@@ -1920,7 +2026,9 @@ ${calendarContext}`;
       if (parsed.patient_name && parsed.time) {
         const curSitting = parsed.current_sitting || 1;
         const totSittings = parsed.total_sittings || 1;
-        const validatedDate = parseRequestedBookingDate(parsed.date, calInfo.todayStr, calInfo.tomorrowStr, calInfo.today);
+        const summaryDate = rawReply.replace(/[*_]/g, '').match(/Date:\s*([^\r\n•]+)/i)?.[1];
+        const jsonDate = typeof parsed.date === 'string' && /\d/.test(parsed.date) ? parsed.date : summaryDate;
+        const validatedDate = parseRequestedBookingDate(jsonDate, calInfo.todayStr, calInfo.tomorrowStr);
         const bookingId = parsed.booking_id || generateBookingId(validatedDate);
         const rawParsedPhone = parsed.phone_number || '';
         const effectivePhone = (!isDummyPhoneNumber(rawParsedPhone) && rawParsedPhone) 
@@ -1953,15 +2061,15 @@ ${calendarContext}`;
 
   // Fallback: If no BOOKING_JSON tag was emitted, but the response text is clearly an appointment confirmation
   if (!isAppointmentCard) {
-    const isConfirmationText = /appointment confirmed|consultation confirmed|consultation reserved|booking confirmed|booking summary|appointment summary|appointment details|booking details|consultation details|your appointment is confirmed|your booking is confirmed|your consultation is confirmed|appointment booked|consultation booked|slot confirmed|appointment scheduled|consultation scheduled|digital booking pass/i.test(rawReply);
-    if (isConfirmationText) {
-      let nameMatch = rawReply.match(/(?:•\s*)?Patient(?:\s+Name)?:\s*([^\r\n•]+)/i) || rawReply.match(/(?:•\s*)?Name:\s*([^\r\n•]+)/i);
-      let phoneMatch = rawReply.match(/(?:•\s*)?(?:Contact|Phone)(?:\s+Number)?:\s*([^\r\n•]+)/i);
-      const deptMatch = rawReply.match(/(?:•\s*)?(?:Treatment|Service|Concern)(?:\s*\/\s*Concern)?:\s*([^\r\n•]+)/i);
-      const docMatch = rawReply.match(/(?:•\s*)?(?:Consulting Specialist|Doctor|Consultant):\s*([^\r\n•]+)/i);
-      const dateMatch = rawReply.match(/(?:•\s*)?Date:\s*([^\r\n•]+)/i) || rawReply.match(/(\d{4}-\d{2}-\d{2}|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday)/i);
-      const timeMatch = rawReply.match(/(?:•\s*)?Time(?:\s+Slot)?:\s*([^\r\n•]+)/i) || rawReply.match(/(10:30\s*(?:am)?|11:30\s*(?:am)?|02:00\s*(?:pm)?|02:30\s*(?:pm)?|04:00\s*(?:pm)?|05:30\s*(?:pm)?|\d{1,2}:\d{2}\s*(?:am|pm)?)/i);
-      const bookingIdMatch = rawReply.match(/(?:•\s*)?Booking(?:\s+ID|#)?:\s*([^\r\n•]+)/i);
+    if (looksLikeBookingConfirmation(rawReply)) {
+      const plainReply = rawReply.replace(/[*_]/g, '');
+      let nameMatch = plainReply.match(/(?:•\s*)?Patient(?:\s+Name)?:\s*([^\r\n•]+)/i) || plainReply.match(/(?:•\s*)?Name:\s*([^\r\n•]+)/i);
+      let phoneMatch = plainReply.match(/(?:•\s*)?(?:Contact|Phone)(?:\s+Number)?:\s*([^\r\n•]+)/i);
+      const deptMatch = plainReply.match(/(?:•\s*)?(?:Treatment|Service|Concern)(?:\s*\/\s*Concern)?:\s*([^\r\n•]+)/i);
+      const docMatch = plainReply.match(/(?:•\s*)?(?:Consulting Specialist|Doctor|Consultant):\s*([^\r\n•]+)/i);
+      const dateMatch = plainReply.match(/(?:•\s*)?Date:\s*([^\r\n•]+)/i) || plainReply.match(/(\d{4}-\d{2}-\d{2}|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday)/i);
+      const timeMatch = plainReply.match(/(?:•\s*)?Time(?:\s+Slot)?:\s*([^\r\n•]+)/i) || plainReply.match(/(10:30\s*(?:am)?|11:30\s*(?:am)?|02:00\s*(?:pm)?|02:30\s*(?:pm)?|04:00\s*(?:pm)?|05:30\s*(?:pm)?|\d{1,2}:\d{2}\s*(?:am|pm)?)/i);
+      const bookingIdMatch = plainReply.match(/(?:•\s*)?Booking(?:\s+ID|#)?:\s*([^\r\n•]+)/i);
 
       // Extract phone / name from conversation history if missing from response
       if (!phoneMatch) {
@@ -1976,7 +2084,7 @@ ${calendarContext}`;
         || (options?.senderPhone && !isDummyPhoneNumber(options.senderPhone) ? options.senderPhone.trim() : '');
       const rawDept = deptMatch ? deptMatch[1].trim() : 'Clinical Consultation';
       const rawDoc = docMatch ? docMatch[1].trim() : (activeHospitalProfile.leadDoctor || 'Dr. Mrinalini');
-      const rawDate = dateMatch ? parseRequestedBookingDate(dateMatch[1] ? dateMatch[1].trim() : dateMatch[0].trim(), calInfo.todayStr, calInfo.tomorrowStr, calInfo.today) : calInfo.tomorrowStr;
+      const rawDate = dateMatch ? parseRequestedBookingDate(dateMatch[1] ? dateMatch[1].trim() : dateMatch[0].trim(), calInfo.todayStr, calInfo.tomorrowStr) : calInfo.tomorrowStr;
       const rawTime = timeMatch ? (timeMatch[1] || timeMatch[0]).trim().replace(/\s*\(.*?\)/, '').trim() : '11:30 AM';
       const bookingId = bookingIdMatch ? bookingIdMatch[1].trim() : generateBookingId(rawDate);
 
@@ -1997,6 +2105,11 @@ ${calendarContext}`;
       };
     }
   }
+
+  // Strip any booking tag left behind (e.g. invalid JSON the parser skipped),
+  // so it never reaches the patient.
+  cleanReply = cleanReply.replace(/<!--\s*BOOKING_JSON[\s\S]*?(?:-->|$)/gi, '').trim();
+  cleanReply = toWhatsAppFormatting(cleanReply);
 
   cleanReply = cleanAIOutputReplies(cleanReply, message, activeHospitalProfile, appointmentData, options?.senderPhone, options?.senderName);
   cleanReply = removeEmojisAndSmileys(cleanReply);

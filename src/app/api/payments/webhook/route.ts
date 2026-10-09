@@ -56,7 +56,6 @@ export async function POST(request: Request) {
           .from('appointments')
           .update({
             payment_status: 'paid',
-            status: 'Confirmed',
             receipt_number: receiptId,
             payment_id: rzpPaymentId,
             updated_at: nowIso,

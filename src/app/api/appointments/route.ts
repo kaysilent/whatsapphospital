@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getCurrentAccount } from '@/lib/auth/account';
-import { parseRequestedBookingDate, formatProperName } from '@/lib/ai/generate-reply';
+import { parseRequestedBookingDate, formatProperName, getClinicalCalendarInfo } from '@/lib/ai/generate-reply';
 import { syncAppointmentToGoogleCalendar } from '@/lib/calendar/google-calendar';
 
 export const runtime = 'nodejs';
@@ -160,10 +160,9 @@ export async function POST(request: Request) {
     }
 
     const admin = supabaseAdmin();
-    const today = new Date();
-    const todayIso = today.toISOString().split('T')[0];
-    const tomorrowIso = new Date(today.getTime() + 86400000).toISOString().split('T')[0];
-    const safeDate = parseRequestedBookingDate(date, todayIso, tomorrowIso, today);
+    // Clinic calendar (IST) dates, not UTC.
+    const { todayStr: todayIso, tomorrowStr: tomorrowIso } = getClinicalCalendarInfo();
+    const safeDate = parseRequestedBookingDate(date, todayIso, tomorrowIso);
 
     const validStatuses = ['Confirmed (AI)', 'Confirmed (Staff)', 'Scheduled', 'Completed', 'Cancelled', 'Rescheduled', 'No Show'];
     const safeStatus = validStatuses.includes(status) ? status : (status === 'Confirmed' ? 'Confirmed (Staff)' : 'Confirmed (Staff)');

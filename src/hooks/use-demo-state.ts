@@ -6,6 +6,7 @@ import {
   defaultKnowledgeItems,
   type KnowledgeItem,
 } from '@/lib/ai/assistant-defaults';
+import { isHiddenByDeletion, stampDeletions } from '@/lib/contacts/deleted-patients';
 
 export interface TreatmentProtocol {
   name: string;
@@ -131,6 +132,7 @@ export type Appointment = {
   sitting?: string;
   next_sitting_date?: string;
   completed_at?: string;
+  created_at?: string;
   notes?: string;
 };
 
@@ -421,16 +423,8 @@ const isDummyAppointment = (a: any): boolean => {
   return false;
 };
 
-const isDeleted = (phone?: string, id?: string): boolean => {
-  const deleted = currentState.deletedPatientPhones || [];
-  if (deleted.length === 0) return false;
-  const cleanP = (phone || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
-  const cleanId = (id || '').toLowerCase();
-  return deleted.some(d => {
-    const cleanD = (d || '').toLowerCase().replace(/[\s\-\(\)\+]/g, '');
-    return cleanD === cleanP || cleanD === cleanId || d === phone || d === id;
-  });
-};
+const isDeleted = (phone?: string, id?: string, createdAt?: string): boolean =>
+  isHiddenByDeletion(currentState.deletedPatientPhones || [], phone, id, createdAt);
 
 export async function syncAppointmentsFromDatabase(): Promise<Appointment[]> {
   if (typeof window === 'undefined') return currentState.appointments;
@@ -472,7 +466,8 @@ export async function syncAppointmentsFromDatabase(): Promise<Appointment[]> {
           sitting: a.sitting || (a.total_sittings > 1 ? `Sitting ${a.current_sitting || 1} of ${a.total_sittings}` : 'Consultation'),
           next_sitting_date: a.next_sitting_date,
           notes: a.notes || '',
-          completed_at: a.completed_at
+          completed_at: a.completed_at,
+          created_at: a.created_at
         };
       });
 
@@ -482,7 +477,7 @@ export async function syncAppointmentsFromDatabase(): Promise<Appointment[]> {
 
       // 1. Add server appts first (ground truth)
       serverAppts.forEach(sa => {
-        if (!isDummyAppointment(sa) && !isDeleted(sa.phone_number, sa.id)) {
+        if (!isDummyAppointment(sa) && !isDeleted(sa.phone_number, sa.id, sa.created_at)) {
           const key = sa.id ? `id_${sa.id}` : `${sa.patient_name.trim().toLowerCase()}_${sa.date}_${sa.time}`;
           mergedMap.set(key, sa);
         }
@@ -490,7 +485,7 @@ export async function syncAppointmentsFromDatabase(): Promise<Appointment[]> {
 
       // 2. Add local non-dummy appts if not already present on server
       localAppts.forEach(la => {
-        if (!isDummyAppointment(la) && !isDeleted(la.phone_number, la.id)) {
+        if (!isDummyAppointment(la) && !isDeleted(la.phone_number, la.id, la.created_at)) {
           const key = la.id ? `id_${la.id}` : `${la.patient_name.trim().toLowerCase()}_${la.date}_${la.time}`;
           if (!mergedMap.has(key)) {
             mergedMap.set(key, la);
@@ -1204,6 +1199,7 @@ export function useDemoState() {
 
     const currentDeleted = currentState.deletedPatientPhones || [];
     const updatedDeleted = Array.from(new Set([...currentDeleted, phoneOrId, cleanTarget]));
+    stampDeletions([phoneOrId, cleanTarget]);
 
     updateState({
       appointments: updatedAppts,

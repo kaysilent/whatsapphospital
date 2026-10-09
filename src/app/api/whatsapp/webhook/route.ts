@@ -1066,17 +1066,9 @@ async function processMessage(
       })
 
       if (aiResult.reply) {
-        try {
-          await engineSendText({
-            accountId,
-            userId: 'system',
-            conversationId: conversation.id,
-            contactId: contactRecord.id,
-            text: aiResult.reply,
-          });
-        } catch (err: any) {
-          console.warn('[AI WhatsApp Reply send notice]:', err?.message);
-        }
+        // Sent after the booking is saved, so a failed save never reaches the
+        // patient as "Appointment Confirmed!".
+        let replyText = aiResult.reply
 
         // Record appointment, pipeline deal, clinical diagnostic note & payment if detected
         if (aiResult.isAppointmentCard && aiResult.appointmentData) {
@@ -1086,186 +1078,225 @@ async function processMessage(
             return d === '919876543210' || d === '9876543210' || d === '1234567890' || d === '0000000000' || d.length < 8;
           };
           const patientPhone = (apptData.phone_number && !isDummyPhone(apptData.phone_number)) ? apptData.phone_number : senderPhone;
-          const todayDate = new Date();
-          const todayIso = todayDate.toISOString().split('T')[0];
-          const tomorrowIso = new Date(todayDate.getTime() + 86400000).toISOString().split('T')[0];
-          const validatedDate = parseRequestedBookingDate(apptData.date, todayIso, tomorrowIso, todayDate);
+          // Clinic calendar (IST) dates: UTC "today" is yesterday before 05:30 IST.
+          const { todayStr: todayIso, tomorrowStr: tomorrowIso } = getClinicalCalendarInfo();
+          const validatedDate = parseRequestedBookingDate(apptData.date, todayIso, tomorrowIso);
           const bookingId = apptData.booking_id || `LF-${validatedDate.replace(/\D/g, '') || '20261007'}-${Math.floor(1000 + Math.random() * 9000)}`;
           const rawApptName = (apptData.patient_name && apptData.patient_name.toLowerCase() !== 'patient' && apptData.patient_name.toLowerCase() !== 'valued patient') ? apptData.patient_name : '';
           const rawContactName = (contactName && contactName.toLowerCase() !== 'patient' && contactName.toLowerCase() !== 'valued patient') ? contactName : '';
           const rawRecordName = (contactRecord?.name && contactRecord.name.toLowerCase() !== 'patient' && contactRecord.name.toLowerCase() !== 'valued patient') ? contactRecord.name : '';
           const patientName = formatProperName(rawApptName || rawContactName || rawRecordName || 'Valued Patient');
 
-          // Update contact name in contacts table if recognized
-          if (patientName && patientName !== 'Patient' && patientName !== contactRecord?.name) {
-            try {
-              await supabaseAdmin()
-                .from('contacts')
-                .update({ name: patientName, updated_at: new Date().toISOString() })
-                .eq('id', contactRecord.id);
-            } catch (cntErr: any) {
-              console.warn('[Contact Name Update Notice]:', cntErr?.message);
-            }
-          }
+          // The model often repeats the confirmation summary on later turns
+          // ("thanks", "ok"); don't create the same booking again.
+          const { data: existingBooking } = await db
+            .from('appointments')
+            .select('id')
+            .eq('account_id', accountId)
+            .eq('phone_number', patientPhone)
+            .eq('date', validatedDate)
+            .eq('time', apptData.time || '11:30 AM')
+            .neq('status', 'Cancelled')
+            .limit(1)
+            .maybeSingle()
 
-          let insertedAppt: any = null;
-          const apptPayload = {
-            account_id: accountId,
-            patient_name: patientName,
-            phone_number: patientPhone,
-            date: validatedDate,
-            time: apptData.time || '11:30 AM',
-            department: apptData.department || 'Clinical Consultation',
-            doctor: apptData.doctor || 'Dr. Mrinalini',
-            current_sitting: apptData.current_sitting || 1,
-            total_sittings: apptData.total_sittings || 1,
-            sitting_interval: apptData.sitting_interval || '4-6 weeks',
-            sitting_interval_days: apptData.sitting_interval_days || 28,
-            notes: `[Booking ID: ${bookingId}]`,
-            status: 'Confirmed (AI)'
-          };
-
-          try {
-            const { data, error } = await supabaseAdmin()
-              .from('appointments')
-              .insert(apptPayload)
-              .select()
-              .single();
-
-            if (error) {
-              console.warn('[AI Appointment Insert Warning]:', error.message);
-              // Foreign key or account_id constraint fallback
-              if (error.code === '23503' || error.message?.includes('foreign key') || error.message?.includes('account_id')) {
-                const { data: retryData } = await supabaseAdmin()
-                  .from('appointments')
-                  .insert({ ...apptPayload, account_id: null })
-                  .select()
-                  .single();
-                insertedAppt = retryData;
+          if (!existingBooking) {
+            // Update contact name in contacts table if recognized
+            if (patientName && patientName !== 'Patient' && patientName !== contactRecord?.name) {
+              try {
+                await supabaseAdmin()
+                  .from('contacts')
+                  .update({ name: patientName, updated_at: new Date().toISOString() })
+                  .eq('id', contactRecord.id);
+              } catch (cntErr: any) {
+                console.warn('[Contact Name Update Notice]:', cntErr?.message);
               }
-            } else {
-              insertedAppt = data;
             }
-          } catch (err: any) {
-            console.warn('[AI Appointment Insert Notice]:', err?.message);
-          }
 
-          // Sync booked appointment to Google Calendar
-          try {
-            await syncAppointmentToGoogleCalendar(insertedAppt || apptPayload, 'create');
-          } catch (calErr: any) {
-            console.warn('[Google Calendar Sync Error on Webhook]:', calErr?.message);
-          }
-
-          // Also insert automated follow-up task
-          const fuDueDate = new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0];
-          const fuPayload = {
-            account_id: accountId,
-            appointment_id: insertedAppt?.id || null,
-            patient_name: patientName,
-            phone_number: patientPhone,
-            department: apptData.department || 'Clinical Consultation',
-            sitting_info: apptData.total_sittings && apptData.total_sittings > 1 ? `After Sitting ${apptData.current_sitting || 1} of ${apptData.total_sittings}` : 'Post-Consultation',
-            reason: 'Post-consultation treatment care & recovery review',
-            type: 'post_care',
-            due: 'In 2 days',
-            due_date: fuDueDate,
-            priority: 'High',
-            status: 'Pending',
-            created_by: 'AI Agent',
-            whatsapp_message_content: `Hello ${patientName}, Dr. Mrinalini at La Fleur Clinic hopes your consultation went well. Please let us know if you have any questions.`
-          };
-
-          try {
-            const { error: fuErr } = await supabaseAdmin()
-              .from('follow_up_tasks')
-              .insert(fuPayload);
-            if (fuErr && (fuErr.code === '23503' || fuErr.message?.includes('foreign key'))) {
-              await supabaseAdmin()
-                .from('follow_up_tasks')
-                .insert({ ...fuPayload, account_id: null, appointment_id: null });
-            }
-          } catch (err: any) {
-            console.warn('[AI Follow-Up Task Insert Notice]:', err?.message);
-          }
-
-          // Determine active booking fee (token charged to secure the slot)
-          let bookingFeeAmount = currentHospitalProfile.advanceTokenFee ?? 10;
-          try {
-            const { data: payCfg } = await supabaseAdmin()
-              .from('payment_configs')
-              .select('default_consultation_fee, default_advance_token_fee, booking_fee')
-              .order('updated_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            const rawB = payCfg?.booking_fee ?? payCfg?.default_advance_token_fee;
-            if (rawB !== undefined && rawB !== null && !isNaN(Number(rawB))) {
-              bookingFeeAmount = Number(rawB);
-            }
-          } catch {
-            bookingFeeAmount = currentHospitalProfile.advanceTokenFee ?? 10;
-          }
-
-          // 1. Pipeline Deal Sync (Sales & Pipeline Kanban)
-          try {
-            const dealPayload = {
-              account_id: accountId,
-              contact_id: contactRecord.id,
-              conversation_id: conversation.id,
-              title: `${apptData.department || 'Consultation'} - ${patientName}`,
-              value: bookingFeeAmount,
-              currency: 'INR',
-              status: 'open',
-              notes: `AI-booked consultation for ${validatedDate} at ${apptData.time} with Dr. Mrinalini.`
-            };
-            const { error: dealErr } = await supabaseAdmin().from('deals').insert(dealPayload);
-            if (dealErr && dealErr.code === '23503') {
-              await supabaseAdmin().from('deals').insert({ ...dealPayload, account_id: null });
-            }
-          } catch (err: any) {
-            console.warn('[AI Deal Insert Notice]:', err?.message);
-          }
-
-          // 2. Clinical Diagnostic Intake Note (Medical Prescriptions & Diagnostics)
-          try {
-            const notePayload = {
-              account_id: accountId,
-              contact_id: contactRecord.id,
-              user_id: configOwnerUserId || 'system',
-              note_text: `[Pre-Consultation Clinical Diagnostic Intake]\n• Patient: ${patientName}\n• Contact: ${patientPhone}\n• Department/Concern: ${apptData.department}\n• Appointment: ${validatedDate} at ${apptData.time}\n• Triage Source: WhatsApp AI Assistant`
-            };
-            const { error: noteErr } = await supabaseAdmin().from('contact_notes').insert(notePayload);
-            if (noteErr && noteErr.code === '23503') {
-              await supabaseAdmin().from('contact_notes').insert({ ...notePayload, account_id: null });
-            }
-          } catch (err: any) {
-            console.warn('[AI Contact Note Insert Notice]:', err?.message);
-          }
-
-          // 3. Accounting & Payments Ledger (Clinic Accounting & Payouts)
-          try {
-            const receiptNum = `RCP-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
-            const paymentPayload = {
+            let insertedAppt: any = null;
+            const apptPayload = {
               account_id: accountId,
               patient_name: patientName,
               phone_number: patientPhone,
-              treatment: `${apptData.department || 'Aesthetic Consultation'} Token Advance`,
-              amount: bookingFeeAmount,
-              currency: 'INR',
-              gateway: 'razorpay',
-              status: 'paid',
-              receipt_number: receiptNum,
-              gateway_payment_id: `pay_wa_${Date.now()}`,
-              paid_at: new Date().toISOString(),
-              appointment_id: insertedAppt?.id || null
+              date: validatedDate,
+              time: apptData.time || '11:30 AM',
+              department: apptData.department || 'Clinical Consultation',
+              doctor: apptData.doctor || 'Dr. Mrinalini',
+              current_sitting: apptData.current_sitting || 1,
+              total_sittings: apptData.total_sittings || 1,
+              sitting_interval: apptData.sitting_interval || '4-6 weeks',
+              sitting_interval_days: apptData.sitting_interval_days || 28,
+              notes: `[Booking ID: ${bookingId}]`,
+              status: 'Confirmed (AI)',
+              // The advance booking fee is still due; /api/payments/verify
+              // flips this to 'paid' when the patient completes payment.
+              payment_status: 'pending',
             };
-            const { error: payErr } = await supabaseAdmin().from('payments').insert(paymentPayload);
-            if (payErr && payErr.code === '23503') {
-              await supabaseAdmin().from('payments').insert({ ...paymentPayload, account_id: null, appointment_id: null });
+
+            try {
+              const { data, error } = await supabaseAdmin()
+                .from('appointments')
+                .insert(apptPayload)
+                .select()
+                .single();
+
+              if (error) {
+                console.warn('[AI Appointment Insert Warning]:', error.message);
+              } else {
+                insertedAppt = data;
+              }
+            } catch (err: any) {
+              console.warn('[AI Appointment Insert Notice]:', err?.message);
             }
-          } catch (err: any) {
-            console.warn('[AI Payment Insert Notice]:', err?.message);
+
+            if (!insertedAppt) {
+              console.error('[AI Booking] appointment could not be saved; not confirming to patient')
+              replyText = `Thank you${patientName && patientName !== 'Valued Patient' ? `, ${patientName}` : ''}. I couldn't confirm your booking automatically just now. Our team has your request for ${validatedDate} at ${apptData.time || 'your chosen time'} and will confirm it with you shortly.`
+            } else {
+              // Sync booked appointment to Google Calendar
+              try {
+                await syncAppointmentToGoogleCalendar(insertedAppt || apptPayload, 'create');
+              } catch (calErr: any) {
+                console.warn('[Google Calendar Sync Error on Webhook]:', calErr?.message);
+              }
+
+              // Also insert automated follow-up task
+              const fuDueDate = new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0];
+              const fuPayload = {
+                account_id: accountId,
+                appointment_id: insertedAppt?.id || null,
+                patient_name: patientName,
+                phone_number: patientPhone,
+                department: apptData.department || 'Clinical Consultation',
+                sitting_info: apptData.total_sittings && apptData.total_sittings > 1 ? `After Sitting ${apptData.current_sitting || 1} of ${apptData.total_sittings}` : 'Post-Consultation',
+                reason: 'Post-consultation treatment care & recovery review',
+                type: 'post_care',
+                due: 'In 2 days',
+                due_date: fuDueDate,
+                priority: 'High',
+                status: 'Pending',
+                created_by: 'AI Agent',
+                whatsapp_message_content: `Hello ${patientName}, Dr. Mrinalini at La Fleur Clinic hopes your consultation went well. Please let us know if you have any questions.`
+              };
+
+              try {
+                const { error: fuErr } = await db
+                  .from('follow_up_tasks')
+                  .insert(fuPayload);
+                if (fuErr) console.warn('[AI Follow-Up Task Insert Notice]:', fuErr.message);
+              } catch (err: any) {
+                console.warn('[AI Follow-Up Task Insert Notice]:', err?.message);
+              }
+
+              // Determine active booking fee (token charged to secure the slot)
+              let bookingFeeAmount = currentHospitalProfile.advanceTokenFee ?? 10;
+              try {
+                const { data: payCfg } = await db
+                  .from('payment_configs')
+                  .select('default_consultation_fee, default_advance_token_fee, booking_fee')
+                  .eq('account_id', accountId)
+                  .order('updated_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                const rawB = payCfg?.booking_fee ?? payCfg?.default_advance_token_fee;
+                if (rawB !== undefined && rawB !== null && !isNaN(Number(rawB))) {
+                  bookingFeeAmount = Number(rawB);
+                }
+              } catch {
+                bookingFeeAmount = currentHospitalProfile.advanceTokenFee ?? 10;
+              }
+
+              // 1. Pipeline Deal Sync (Sales & Pipeline Kanban). deals requires a
+              // pipeline, a stage and an owning user; without them every insert
+              // used to fail silently. Uses the account's first pipeline/stage.
+              try {
+                const { data: pipeline } = await db
+                  .from('pipelines')
+                  .select('id')
+                  .eq('account_id', accountId)
+                  .order('created_at', { ascending: true })
+                  .limit(1)
+                  .maybeSingle()
+                const { data: stage } = pipeline
+                  ? await db
+                      .from('pipeline_stages')
+                      .select('id')
+                      .eq('pipeline_id', pipeline.id)
+                      .order('position', { ascending: true })
+                      .limit(1)
+                      .maybeSingle()
+                  : { data: null }
+                if (!pipeline || !stage) {
+                  throw new Error('no pipeline/stage configured for this account; skipping deal')
+                }
+                const dealPayload = {
+                  user_id: configOwnerUserId,
+                  pipeline_id: pipeline.id,
+                  stage_id: stage.id,
+                  account_id: accountId,
+                  contact_id: contactRecord.id,
+                  conversation_id: conversation.id,
+                  title: `${apptData.department || 'Consultation'} - ${patientName}`,
+                  value: bookingFeeAmount,
+                  currency: 'INR',
+                  status: 'open',
+                  notes: `AI-booked consultation for ${validatedDate} at ${apptData.time} with Dr. Mrinalini.`
+                };
+                const { error: dealErr } = await db.from('deals').insert(dealPayload);
+                if (dealErr) console.warn('[AI Deal Insert Notice]:', dealErr.message);
+              } catch (err: any) {
+                console.warn('[AI Deal Insert Notice]:', err?.message);
+              }
+
+              // 2. Clinical Diagnostic Intake Note (Medical Prescriptions & Diagnostics)
+              try {
+                const notePayload = {
+                  account_id: accountId,
+                  contact_id: contactRecord.id,
+                  user_id: configOwnerUserId || 'system',
+                  note_text: `[Pre-Consultation Clinical Diagnostic Intake]\n• Patient: ${patientName}\n• Contact: ${patientPhone}\n• Department/Concern: ${apptData.department}\n• Appointment: ${validatedDate} at ${apptData.time}\n• Triage Source: WhatsApp AI Assistant`
+                };
+                const { error: noteErr } = await db.from('contact_notes').insert(notePayload);
+                if (noteErr) console.warn('[AI Contact Note Insert Notice]:', noteErr.message);
+              } catch (err: any) {
+                console.warn('[AI Contact Note Insert Notice]:', err?.message);
+              }
+
+              // 3. Accounting & Payments Ledger: the advance fee is *due*, not paid.
+              // This used to insert a fabricated 'paid' row with a made-up receipt.
+              try {
+                const paymentPayload = {
+                  account_id: accountId,
+                  patient_name: patientName,
+                  phone_number: patientPhone,
+                  treatment: `${apptData.department || 'Aesthetic Consultation'} Token Advance`,
+                  amount: bookingFeeAmount,
+                  currency: 'INR',
+                  gateway: 'razorpay',
+                  status: 'pending',
+                  appointment_id: insertedAppt?.id || null,
+                  appointment_date: validatedDate,
+                  appointment_time: apptData.time || null,
+                };
+                const { error: payErr } = await db.from('payments').insert(paymentPayload);
+                if (payErr) console.warn('[AI Payment Insert Notice]:', payErr.message);
+              } catch (err: any) {
+                console.warn('[AI Payment Insert Notice]:', err?.message);
+              }
+            }
           }
+        }
+
+        try {
+          await engineSendText({
+            accountId,
+            userId: 'system',
+            conversationId: conversation.id,
+            contactId: contactRecord.id,
+            text: replyText,
+          });
+        } catch (err: any) {
+          console.warn('[AI WhatsApp Reply send notice]:', err?.message);
         }
       }
     } catch (aiErr) {

@@ -71,7 +71,6 @@ export async function POST(request: Request) {
           .from('appointments')
           .update({
             payment_status: 'paid',
-            status: 'Confirmed',
             receipt_number: receiptId,
             payment_id: gatewayPaymentId || paymentId,
             updated_at: nowIso,
@@ -81,7 +80,6 @@ export async function POST(request: Request) {
         // Match appointment by phone
         const updatePayload: any = {
           payment_status: 'paid',
-          status: 'Confirmed',
           receipt_number: receiptId,
           payment_id: gatewayPaymentId || paymentId,
           updated_at: nowIso,
@@ -94,6 +92,19 @@ export async function POST(request: Request) {
           .update(updatePayload)
           .eq('phone_number', phoneNumber)
           .eq('payment_status', 'pending');
+
+        // WhatsApp bookings record the advance fee as a pending payment.
+        await supabase
+          .from('payments')
+          .update({
+            status: 'paid',
+            gateway_payment_id: gatewayPaymentId || null,
+            receipt_number: receiptId,
+            paid_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('phone_number', phoneNumber)
+          .eq('status', 'pending');
       }
 
       // Sync confirmed appointment to Google Calendar
